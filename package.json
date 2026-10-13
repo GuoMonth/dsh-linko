@@ -1,0 +1,14 @@
+{
+  "name": "@dsh-linko/root",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@12.5.0",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "docs:check": "node scripts/docs-check.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": { "typescript": "7.0.2" }
+}
