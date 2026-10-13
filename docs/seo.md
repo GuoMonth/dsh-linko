@@ -6,7 +6,7 @@ Linko uses repository metadata and clear public terminology before it adds a doc
 
 ## Canonical description
 
-Open-source, local-first collaboration mesh for DeepSeek Harness: evidence-backed agent discovery, subjective trust ledgers, explainable routing, bounded LAN gossip, WebSocket transport, TypeScript 7, and Rust/WebAssembly.
+Open-source, local-first collaboration mesh for DeepSeek Harness: envelope-based agent messaging, decentralized LAN/P2P sync, evidence-backed collaborator discovery, subjective trust ledgers, bounded group chat, WebSocket transport, TypeScript 7, and Rust/WebAssembly.
 
 ## Primary terms
 
@@ -18,6 +18,11 @@ Open-source, local-first collaboration mesh for DeepSeek Harness: evidence-backe
 - subjective trust graph
 - signed cognitive ledger
 - bounded gossip protocol
+- decentralized LAN IM
+- P2P end-to-end messaging
+- message envelope protocol
+- REST cursor synchronization
+- group chat up to 500 members
 - TypeScript 7 and Rust WebAssembly
 
 ## Repository metadata

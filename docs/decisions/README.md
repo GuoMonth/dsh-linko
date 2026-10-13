@@ -8,3 +8,6 @@ Decision records capture choices that affect the product boundary, protocol, or 
 - [0002 Subjective local ledger](0002-local-first-cognitive-ledger.md)
 - [0003 Bounded dissemination](0003-bounded-gossip.md)
 - [0004 TypeScript reference and WASM boundary](0004-wasm-boundary.md)
+- [0005 Local node, REST synchronization, and WebSocket acceleration](0005-local-node-rest-sync-websocket.md)
+- [0006 LAN discovery and transport profiles](0006-lan-discovery-and-transport-profile.md)
+- [0007 Group chat capacity and end-to-end encryption boundary](0007-group-chat-and-e2ee-boundary.md)

@@ -6,7 +6,7 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 
 ## 标准描述
 
-面向 DeepSeek Harness 的开源、局域网优先协作网络：带证据的 Agent 发现、主观信任账本、可解释路由、有边界的局域网 Gossip、WebSocket 传输、TypeScript 7 和 Rust/WebAssembly。
+面向 DeepSeek Harness 的开源、局域网优先协作网络：信封消息、去中心化局域网/P2P 同步、带证据的 Agent 发现、主观信任账本、有边界的群聊、WebSocket 传输、TypeScript 7 和 Rust/WebAssembly。
 
 ## 主要术语
 
@@ -18,6 +18,11 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 - subjective trust graph
 - signed cognitive ledger
 - bounded gossip protocol
+- decentralized LAN IM
+- P2P end-to-end messaging
+- message envelope protocol
+- REST cursor synchronization
+- group chat up to 500 members
 - TypeScript 7 and Rust WebAssembly
 
 ## 仓库元数据

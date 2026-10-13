@@ -8,3 +8,6 @@
 - [0002 主观的局域网优先账本](0002-local-first-cognitive-ledger.zh.md)
 - [0003 有边界的传播](0003-bounded-gossip.zh.md)
 - [0004 TypeScript 参考实现与 WASM 边界](0004-wasm-boundary.zh.md)
+- [0005 本地节点、REST 同步与 WebSocket 加速](0005-local-node-rest-sync-websocket.zh.md)
+- [0006 局域网发现与传输配置档](0006-lan-discovery-and-transport-profile.zh.md)
+- [0007 群聊容量与端到端加密边界](0007-group-chat-and-e2ee-boundary.zh.md)

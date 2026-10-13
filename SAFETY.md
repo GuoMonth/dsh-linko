@@ -14,5 +14,8 @@ Before a runtime exists, treat every protocol example as a design artifact. When
 - expire and revoke claims;
 - test duplicate, replayed, oversized, malformed, and unauthorized events;
 - do not expose the LAN listener beyond the intended network without a separate threat model.
+- treat transport encryption and message-layer end-to-end encryption as separate claims;
+- keep group rooms within the 500-member design profile until a larger profile has evidence;
+- fail closed for protected group content when keys are missing or membership is stale.
 
 Linko is provided under the MIT License without warranty. Do not use an unreviewed build for sensitive workloads.

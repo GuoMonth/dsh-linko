@@ -14,6 +14,8 @@ LAN messaging and approval panels are useful building blocks. Linko adds the par
 - A routing query produces a personalized recommendation with an explanation of why a collaborator was selected.
 - Context is shared by scope and purpose instead of being broadcast as a complete private history.
 - A human can answer an inbound request, ask their agent to draft a reply, or delegate a bounded response policy.
+- Every delivery is a small envelope with a human-readable cover, machine-readable semantics, and optional local body or UI references.
+- The first group profile supports up to 500 members with explicit membership, Agent policy, and a separate end-to-end encryption milestone.
 - Local discovery, query expansion, and ledger synchronization use separate budgets so a large LAN does not become a broadcast storm.
 
 ## Project status
@@ -27,9 +29,9 @@ The first milestone is documentation and protocol design. No runnable plugin is 
 
 ## Design direction
 
-The logical model is a graph, the synchronization model is an append-only signed event log, and the first physical store is SQLite with JSONL export and replay. A user's global view is a versioned projection of many signed claims through that user's trust, privacy, and task context.
+The logical model is a graph, the synchronization model is an append-only signed event log, and the first physical store is SQLite with JSONL export and replay. A user's global view is a versioned projection of many signed claims through that user's trust, privacy, and task context. A local Linko node owns durable state; REST cursor sync is the recovery path and WebSocket is the low-latency path.
 
-The network begins with a bounded local overlay. It uses direct requests and digest-first anti-entropy instead of full-payload flooding. Rust and WebAssembly are reserved for deterministic protocol validation, Merkle synchronization, routing policy, and context redaction when those boundaries are proven useful.
+The network begins with ordinary IP, REST, and WebSocket, discovered by mDNS or explicit pairing. It uses direct requests and digest-first anti-entropy instead of full-payload flooding. Router and switch features can improve the ceiling but are not prerequisites. Rust and WebAssembly are reserved for deterministic protocol validation, Merkle synchronization, routing policy, graph layout, and context redaction when those boundaries are proven useful.
 
 ## DeepSeek Harness fit
 
