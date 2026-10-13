@@ -4,66 +4,56 @@ English | [中文](0003-lan-sync-and-transport.zh.md)
 
 Status: draft.
 
-## Scope
+## Baseline
 
-This specification defines the Linko local node, peer discovery, delivery recovery, REST synchronization, WebSocket acceleration, and fallback behavior. It covers one-to-one delivery and the transport foundation for groups of up to 500 members.
+One local node owns one SQLite database. DSH, the human inbox, and CLI adapters use the authenticated local API. Peer sessions use HTTPS over TCP; optional WSS sends wake-up hints. Long polling uses the same bounded sync API. The local UI does not discover or connect to every remote peer.
 
-## Local node
+Working unicast IP reachability and permitted ports are prerequisites. No Linko-specific switch/router feature is required. Manual pairing repairs discovery failure, not firewalls, VLAN ACLs, or Wi-Fi client isolation. Enhanced transports are deferred until a measured need exists.
 
-Each installation runs a local Linko node. The node owns the local SQLite event log, outbox, inbox, receipts, notification projections, and peer sessions. CLI, Web UI, and DeepSeek Harness integrations connect to the local node instead of opening a connection to every peer.
+## Pairing and discovery
 
-The node is a peer, not a mandatory central server. It can accept connections, initiate connections, cache encrypted objects, and serve scoped synchronization requests. A deployment MAY use one or more always-on peers as mailboxes, but no mailbox is the source of universal truth.
+Start with an explicit endpoint and out-of-band key verification. Endpoint changes do not change peer identity. mDNS/DNS-SD is an optional local-link hint, equal to explicit pairing, not an assumption of the protocol. Advertise only minimal endpoint/version hints; discovery never grants trust or broadcasts messages or capability histories.
 
-## Network profiles
+Configured rendezvous and bounded peer exchange can be added for routed segments. They cannot bypass blocked IP paths. No DHT, mandatory public bootstrap, or network-wide flooding belongs in the baseline. Discovery, task-query expansion, and state synchronization have separate budgets.
 
-The baseline profile uses ordinary IP connectivity, HTTP request/response, HTTP keep-alive, and WebSocket over TCP. It MUST work without special router or switch configuration.
+## Pull contract
 
-The enhanced profile MAY use IPv6, HTTP/2, QUIC, WebTransport, or libp2p transports after capability negotiation. Enhanced transports are performance and reachability options; they MUST fall back to the baseline profile. Linko MUST NOT require a user to enable a switch feature, create a VLAN, or change router firmware to send a message.
-
-Network equipment can improve the environment operationally. IPv6 and DNS-SD can reduce manual addressing; multicast snooping can reduce discovery noise; VLANs and access control lists can segment trust zones; QoS can prioritize interactive traffic. These are deployment controls, not Linko protocol requirements. A client must behave correctly when they are absent or misconfigured.
-
-## Discovery and overlay
-
-The first discovery attempt SHOULD use DNS-SD over mDNS for a local link. A node advertises a stable Peer ID, protocol versions, transport endpoints, and a short-lived capability summary. mDNS is not used to broadcast message payloads.
-
-If mDNS is unavailable or the network crosses a routed boundary, the node can use manual pairing, a known rendezvous peer, peer exchange, or a bounded DHT. Discovery, task query expansion, and event anti-entropy are separate operations. A direct message uses a known endpoint whenever possible. Topic synchronization uses a selected mesh with deduplication, a fan-out budget, a byte budget, a deadline, and an upper hop limit.
-
-## REST synchronization
-
-REST is the recovery and source-of-truth interface. The minimum conceptual endpoints are:
+Durable committed records are facts; REST is the recovery interface:
 
 ```text
 GET  /v1/node
-GET  /v1/health
-GET  /v1/sync?cursor=...&wait=30
+GET  /v1/sync?cursor=...&wait=...
 POST /v1/envelopes
-GET  /v1/envelopes/{id}
 GET  /v1/objects/{hash}
 POST /v1/receipts
 ```
 
-`POST /v1/envelopes` MUST be idempotent by envelope ID or an explicit idempotency key. `/v1/sync` returns a bounded batch and a next cursor. A cursor gap, expired cursor, or incompatible protocol causes a snapshot-and-delta recovery. Content-addressed objects can be requested separately and verified against their hash.
+These are conceptual endpoints, not a frozen wire format. The loopback MVP uses an explicit Origin allowlist and has no peer authentication; every non-loopback profile MUST authenticate and scope requests. POST deduplicates by verified event identity. Sync returns a bounded batch and opaque next token tied to issuing peer, authorized scope, and log epoch. A cursor is not a global message order. Persist the batch and next checkpoint atomically.
 
-## WebSocket acceleration
+The MVP wire shape returns each `events[]` item as the envelope fields plus `eventId`, `cursor`, and a sibling `facts` object. The facts object is a projection; it is not part of the immutable envelope. `POST /v1/receipts` accepts `{ eventId, deviceId?, state, actionId? }`, where `state` is `presented`, `read`, `acknowledged`, or an explicit action transition. A real node response must pass through the web parser in the cross-package contract fixture.
 
-WebSocket is an optimization for live delivery and UI responsiveness. It is not the durable queue. A session begins with a protocol and capability handshake, includes a last-known cursor, and can send event hints, small events, receipts, and flow-control signals. A reconnecting client uses REST synchronization to repair any gap.
+Expired tokens or changed log epochs trigger an explicit bounded snapshot-plus-delta recovery. An incompatible protocol version produces a version error; a snapshot cannot fix protocol incompatibility. Missing dependencies remain bounded pending work. See [state and storage](0005-state-and-storage.md).
 
-Implementations MUST use ping/pong or an equivalent liveness check, graceful close codes, maximum frame and queue sizes, bounded in-flight work, and exponential backoff with jitter. A node MUST not create a reconnect storm after a shared network failure.
+The initial handshake has a closed vocabulary: protocol/schema versions, peer identity proof, log epoch, endpoint hints, maximum frame/batch/object sizes, and optional group/encryption profile IDs. Unsupported required versions or encryption suites fail explicitly. Optional WSS can fall back to pull; required encryption never falls back to plaintext.
 
-## Delivery and anti-entropy
+## WebSocket hints
 
-The sender appends to its outbox before attempting network delivery. The recipient persists the envelope before reporting `delivered`. Delivery is at least once; recipients deduplicate by envelope ID and content hash. A receipt is a separate event and cannot mutate the original envelope.
+The baseline WSS channel announces “state may have changed”; clients pull to establish durable state. It never owns the queue or advances a cursor. Lost or duplicated hints are harmless. Do not add a second live-event delivery protocol until measurements justify it.
 
-Nodes exchange compact digests and fetch missing event ranges. Per-author sequence numbers, causal metadata, and signed content hashes provide ordering and auditability without requiring a global total order. A group does not require every member to maintain a connection to every other member.
+Require ping/pong or equivalent liveness, idle timeout, frame and queue caps, bounded in-flight requests, graceful close, and exponential reconnect backoff with jitter. Reserve capacity for control traffic so object fetches cannot starve recovery.
 
-## LAN failure cases
+## Delivery and availability
 
-The implementation must handle Wi-Fi client isolation, VLAN boundaries, changing IP addresses, duplicate mDNS records, sleeping devices, firewall rejection, half-open TCP sessions, stale peer advertisements, and temporary node loss. A peer identity is stable across address changes. Local caches and outboxes make temporary peer loss visible as delayed delivery instead of data loss.
+Persist an event and delivery job before sending. Commit verified receive/dedupe/inbox state before reporting delivery. Response loss causes retry of the same event. This is at-least-once transmission with idempotent local insertion, not exactly-once external effects.
 
-## Acceptance evidence
+A sender, recipient cache, or explicitly authorized mailbox must retain an online copy for retrieval. If all eligible holders are offline or have deleted content, show delayed/unavailable status; do not promise offline delivery from nothing. Encrypted mailboxes are a later milestone with quota, retention, metadata exposure, and deletion rules.
 
-- A two-node installation works with ordinary TCP and no managed-switch configuration.
-- A WebSocket interruption is repaired by a cursor-based REST sync without duplicate inbox messages.
-- mDNS failure falls back to pairing or a configured rendezvous peer.
-- Discovery does not transmit message bodies.
-- A test can measure bytes, duplicates, latency, queue depth, and stale state at 100, 1,000, 10,000, and 20,000 simulated peers.
+Simple cursor pull and explicit missing dependencies are sufficient initially. Per-actor ranges, digests, peer exchange, and selective replication need their own measured extension; Merkle synchronization is not assumed.
+
+## Bounds and evidence
+
+Before transport implementation, specify numeric connection, queue, batch, retry, pending-dependency, and object limits with overload errors. A hop limit alone is not storm control. Known-recipient delivery uses unicast; group fan-out uses a bounded connection pool.
+
+The intended deployment envelope remains up to 20,000 participants, as requested. This is a design constraint, not supported capacity: no full mesh or network-wide payload broadcast. Release claims require incremental 100/1,000/10,000/20,000 simulated discovery tests plus representative physical LAN/Wi-Fi evidence. Group traffic is tested separately.
+
+Acceptance traces cover ordinary TCP, disabled mDNS, IP change, sleeping devices, firewall rejection, half-open sessions, reconnect storms, response loss, old cursors, missing bodies, and restart recovery. A working two-node direct connection is the first gate.

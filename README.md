@@ -2,36 +2,39 @@
 
 English | [中文](README.zh.md)
 
-Linko is an open-source, local-first collaboration mesh for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It helps agents find the right collaborator, exchange evidence-backed context, and continue a task under explicit human-controlled policies.
+Linko is an open-source, local-first collaboration mesh for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It helps agents find the right collaborator, exchange scoped context, and continue a task under explicit human-controlled policies.
 
-Linko is currently in the design phase. The repository is specification-driven: product boundaries, data contracts, network budgets, privacy rules, and architecture decisions are documented before the runtime is built.
+Linko is in the design phase. The repository is specification-driven: product boundaries, state transitions, delivery recovery, privacy rules, and architecture decisions are written before runtime code.
 
 ## Why Linko
 
-LAN messaging and approval panels are useful building blocks. Linko adds the part that becomes more valuable with use:
+LAN messaging and approval panels are useful building blocks. Linko adds the part that becomes more useful with a person's own evidence and context:
 
-- Each person and agent can keep a subjective, signed ledger of capability claims and collaboration evidence.
-- A routing query produces a personalized recommendation with an explanation of why a collaborator was selected.
+- Each person and Agent can keep a subjective, signed set of capability claims without creating a global reputation score.
+- A task query can produce a local recommendation with evidence and an explanation.
 - Context is shared by scope and purpose instead of being broadcast as a complete private history.
-- A human can answer an inbound request, ask their agent to draft a reply, or delegate a bounded response policy.
-- Every delivery is a small envelope with a human-readable cover, machine-readable semantics, and optional local body or UI references.
-- The first group profile supports up to 500 members with explicit membership, Agent policy, and a separate end-to-end encryption milestone.
-- Local discovery, query expansion, and ledger synchronization use separate budgets so a large LAN does not become a broadcast storm.
+- A person can answer an inbound request, ask their Agent to draft a reply, or delegate a bounded response policy.
+- Every delivery is a small envelope with a human-readable cover, machine-readable semantics, and an optional local body or safe surface.
+- The first group profile is capped at 500 member principals, with group delivery and message-layer E2EE as separate milestones.
 
 ## Project status
 
-The first milestone is documentation and protocol design. No runnable plugin is promised yet.
+The first local MVP is now runnable as two packages: a SQLite-backed node and an offline-first envelope inbox. It is a local state prototype; peer pairing, WebSocket hints, signatures, and E2EE remain later milestones.
 
 - Product scope: [English](docs/specs/0001-product-scope.md) · [中文](docs/specs/0001-product-scope.zh.md)
 - Architecture: [English](docs/architecture.md) · [中文](docs/architecture.zh.md)
+- State and storage: [English](docs/specs/0005-state-and-storage.md) · [中文](docs/specs/0005-state-and-storage.zh.md)
+- Review record: [English](docs/review.md) · [中文](docs/review.zh.md)
 - Roadmap: [English](ROADMAP.md) · [中文](ROADMAP.zh.md)
 - Decisions: [English](docs/decisions/README.md) · [中文](docs/decisions/README.zh.md)
+- Local node MVP: [English](packages/node/README.md) · [中文](packages/node/README.zh.md)
+- Envelope inbox UI: [English](packages/web/DESIGN.md) · [中文](packages/web/DESIGN.zh.md)
 
 ## Design direction
 
-The logical model is a graph, the synchronization model is an append-only signed event log, and the first physical store is SQLite with JSONL export and replay. A user's global view is a versioned projection of many signed claims through that user's trust, privacy, and task context. A local Linko node owns durable state; REST cursor sync is the recovery path and WebSocket is the low-latency path.
+The first physical store is one SQLite database behind one TypeScript node. Immutable signed events are durable facts; delivery attempts, read state, approvals, and notifications are local operational state. REST cursor pull is the recovery path. WebSocket is an optional wake-up hint. A graph can be materialized later as a view over claims; a graph database is not required.
 
-The network begins with ordinary IP, REST, and WebSocket, discovered by mDNS or explicit pairing. It uses direct requests and digest-first anti-entropy instead of full-payload flooding. Router and switch features can improve the ceiling but are not prerequisites. Rust and WebAssembly are reserved for deterministic protocol validation, Merkle synchronization, routing policy, graph layout, and context redaction when those boundaries are proven useful.
+The network begins with ordinary IP, HTTPS over TCP, and optional WebSocket, using explicit pairing and optional mDNS hints. No router or switch feature is required. DHT, Merkle synchronization, full-mesh sockets, blockchain consensus, and Rust/WASM are parking-lot experiments that need a measured reason and a fallback test.
 
 ## DeepSeek Harness fit
 
@@ -43,7 +46,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guidance in [AGENTS.m
 
 ## Topics
 
-The repository is indexed with dsh, dsh-plugin, deepseek-harness, agent-collaboration, local-first, peer-to-peer, websocket, wasm, typescript, and knowledge-graph.
+The repository is indexed with dsh, dsh-plugin, deepseek-harness, agent-collaboration, local-first, peer-to-peer, websocket, and typescript.
 
 ## License
 

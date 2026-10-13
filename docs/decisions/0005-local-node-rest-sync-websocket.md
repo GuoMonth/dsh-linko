@@ -1,22 +1,24 @@
-# 0005 Local node, REST synchronization, and WebSocket acceleration
+# 0005 Local node, REST synchronization, and WebSocket hints
+
+English | [中文](0005-local-node-rest-sync-websocket.zh.md)
 
 Status: accepted for the design phase.
 
 ## Decision
 
-Every Linko installation is a local node that owns its SQLite event log, outbox, inbox, receipts, projections, and peer sessions. CLI, Web UI, and DeepSeek Harness integrations use the local node API.
+Each installation runs one local Linko node with one SQLite database. CLI, Web UI, and DeepSeek Harness integrations use the local API.
 
-REST with cursor-based synchronization is the source of truth for recovery, history, and state convergence. WebSocket is an acceleration channel for event hints, small live events, receipts, and UI responsiveness. A WebSocket connection is never the only copy of a message and never replaces cursor-based pull.
+Durable accepted domain events and declared local operational rows are the source of truth. REST is the canonical recovery and scoped synchronization interface. WebSocket is an optional wake-up hint channel; it can announce that state may have changed, but it cannot acknowledge a cursor or replace pull recovery.
 
-Delivery is at least once with receiver-side deduplication. The sender persists before sending; the recipient persists before reporting `delivered`. Read and action state are separate events or projections.
+Delivery is at least once with receiver-side verification and deduplication. The sender commits its event and delivery job before sending. The recipient commits the event, dedupe result, inbox projection, and checkpoint before reporting acceptance or delivery. Read, acknowledgement, approval, and action remain separate state dimensions.
 
 ## Rationale
 
-This combines the operational resilience of HTTP synchronization with the low latency expected from chat. A browser, CLI, or peer can continue after a dropped socket, a sleeping device, or a process restart. It also keeps the durable protocol independent of a particular WebSocket library.
+A small local node keeps UI, CLI, and Agent integrations from each implementing peer discovery, retries, policy, and persistence. Pull recovery survives dropped sockets, sleeping devices, and process restarts. Treating WebSocket as an optimization avoids making liveness equal durability.
 
 ## Consequences
 
-- A local daemon or equivalent long-lived process is part of the runtime model.
-- Every peer session needs a cursor, protocol version, capability set, and bounded queue.
-- Implementations must support idempotency, replay-safe events, backoff, and cursor recovery.
-- A push-only implementation is not conforming.
+- One process owns the local transaction boundary; modules separate reducer, storage, and I/O.
+- Every peer session has an authenticated scope, protocol version, log epoch, cursor, and bounded queue.
+- A lost response causes a retry of the same event, not a new event.
+- Any mailbox or relay is an availability helper with explicit retention and metadata exposure, never universal truth.

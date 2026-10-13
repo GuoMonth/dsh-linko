@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linko inbox</title>
+    <meta
+      name="description"
+      content="A local-first envelope inbox: covers first, independent delivery and reading facts, one deliberate decision at a time."
+    />
+    <!--
+      Nothing here loads from a network: no CDN, no webfont, no remote script.
+      The preview renders identically with the machine offline.
+    -->
+    <link rel="stylesheet" href="./theme.css" />
+    <script>
+      // Resolve the theme before first paint so there is no flash of the wrong
+      // one. Kept inline and dependency-free; the app re-reads the same keys.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('linko.theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (error) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="masthead">
+        <div class="wordmark">
+          <span class="wordmark__seal">联</span>
+          <span class="wordmark__name">Linko</span>
+          <span class="wordmark__tag">envelope inbox</span>
+        </div>
+        <div class="masthead__controls" id="masthead-controls"></div>
+        <p class="keys">
+          <kbd>j</kbd><kbd>k</kbd> move · <kbd>n</kbd> next · <kbd>a</kbd> approve ·
+          <kbd>r</kbd> reject · <kbd>d</kbd> defer · <kbd>u</kbd> undo · <kbd>t</kbd> theme
+        </p>
+      </header>
+
+      <div id="banner-region"></div>
+
+      <main class="inbox" data-pane="list">
+        <section class="inbox__list" id="list-region" aria-label="Envelope covers"></section>
+        <section class="inbox__detail" id="detail-region" aria-label="Envelope detail"></section>
+      </main>
+    </div>
+
+    <div id="live-region"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -6,28 +6,28 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 
 ## 标准描述
 
-面向 DeepSeek Harness 的开源、局域网优先协作网络：信封消息、去中心化局域网/P2P 同步、带证据的 Agent 发现、主观信任账本、有边界的群聊、WebSocket 传输、TypeScript 7 和 Rust/WebAssembly。
+面向 DeepSeek Harness 的开源、本地优先信封消息：TypeScript 节点、SQLite 本地状态、有范围的 REST 游标同步、WebSocket 唤醒提示、带证据的协作者发现，以及单独设置 E2EE 里程碑的 500 个主体群配置档。
 
 ## 主要术语
 
 - DeepSeek Harness plugin
 - DSH plugin ecosystem
 - local-first agent collaboration
-- LAN agent mesh
-- explainable agent routing
-- subjective trust graph
-- signed cognitive ledger
-- bounded gossip protocol
-- decentralized LAN IM
-- P2P end-to-end messaging
+- LAN agent messaging
+- explainable collaborator discovery
+- subjective signed capability claims
 - message envelope protocol
 - REST cursor synchronization
+- WebSocket wake-up hints
 - group chat up to 500 members
-- TypeScript 7 and Rust WebAssembly
+- TypeScript 7 and pnpm 12
+- human-in-the-loop Agent approval
+
+当前产品文案不要使用 “P2P end-to-end messaging”“blockchain reputation” 或 “zero-configuration LAN”。这些要么是条件性工作，要么超出范围，要么尚无证据。
 
 ## 仓库元数据
 
-GitHub 描述以 DeepSeek Harness 和局域网优先 Agent 协作为开头。Topics 使用主要术语，不重复堆叠近义词。README 链接到规格、架构、Roadmap 和贡献页面，让搜索访问者能够到达稳定的项目事实。
+GitHub 描述以 DeepSeek Harness 和局域网优先 Agent 协作为开头。Topics 使用主要术语，不重复堆叠近义词。README 链接到稳定规格、架构、复盘、Roadmap 和贡献页面。
 
 ## 命名规则
 

@@ -1,24 +1,23 @@
-# 0006 LAN discovery and transport profiles
+# 0006 LAN discovery and transport profile
+
+English | [中文](0006-lan-discovery-and-transport-profile.zh.md)
 
 Status: accepted for the design phase.
 
 ## Decision
 
-Linko uses ordinary IP networking as its baseline. The baseline transport profile is HTTP request/response plus WebSocket over TCP. DNS-SD over mDNS is the preferred zero-configuration discovery mechanism on a local link, with explicit pairing and configured rendezvous peers as fallbacks.
+The baseline is ordinary unicast IP, HTTPS over TCP, scoped cursor pull, and optional WebSocket hints. Explicit pairing and out-of-band key verification are first-class. DNS-SD over mDNS is an optional local-link hint; its absence is normal.
 
-IPv6, HTTP/2, QUIC, WebTransport, and libp2p transports are optional enhanced profiles. A node negotiates capabilities and falls back to the baseline profile when an enhanced profile is unavailable.
+The only negotiated values in the first profile are protocol/schema versions, peer proof, log epoch, endpoint hints, size limits, and optional group/encryption profile IDs. Unsupported required values fail explicitly. QUIC, HTTP/2, WebTransport, libp2p, peer exchange, and relays are parking-lot extensions until a measured bottleneck and a fallback test exist.
 
-Linko does not require router, switch, VLAN, multicast-snooping, QoS, 802.1X, or firewall changes for ordinary operation. Network devices may improve reachability, segmentation, or prioritization, but they are deployment optimizations rather than protocol dependencies.
-
-Application-level forwarding is bounded and selective. Direct messages use direct delivery when a recipient endpoint is known. Discovery and anti-entropy may use bounded peer exchange or pub/sub. Message payloads are never broadcast as a consequence of presence discovery.
+Linko does not require or configure VLAN, ACL, 802.1X, multicast snooping, QoS, jumbo frames, or router firmware. They may be useful deployment controls, but an application cannot reliably probe or negotiate them. A hop limit is a budget, not storm control.
 
 ## Rationale
 
-LAN behavior varies across Wi-Fi isolation, VLANs, operating systems, VPNs, and managed networks. Requiring a new switch or router feature would make a local-first product fail at the first installation. Capability-based enhancement gives the project a path to better latency and scale without removing the fallback that makes the system deployable.
+Decades of LAN IM and P2P systems converge on reachability, identity, bounded queues, idempotent retry, and pull-based recovery. Product code should use those contracts instead of turning switch features into protocol requirements. A baseline that works on an ordinary TCP path is easier to debug and easier to port.
 
 ## Consequences
 
-- Tests must cover missing mDNS, changing IP addresses, segmented networks, and ordinary TCP.
-- Peer identity is stable independently of an endpoint address.
-- Advanced transport adapters can be added without changing message semantics.
-- A hop limit is a safety budget, not a replacement for deduplication, fan-out limits, byte limits, or backpressure.
+- Tests cover ordinary TCP, missing mDNS, changing endpoints, sleeping nodes, segmented networks, and reconnect storms.
+- Discovery does not grant trust and never carries message bodies.
+- Any enhanced transport must preserve the same event and cursor semantics.

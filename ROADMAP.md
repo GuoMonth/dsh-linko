@@ -2,104 +2,95 @@
 
 English | [中文](ROADMAP.zh.md)
 
-This roadmap reduces architectural uncertainty before adding product code. A phase is complete only when its protocol fixtures, failure evidence, and decision record are written down. A faster transport does not compensate for an undefined delivery or encryption contract.
+This roadmap reduces uncertainty before adding breadth. Every phase needs a fixture, a failure trace, and a review record. A new transport cannot compensate for an undefined state transition.
 
-## Phase 0 — Architecture baseline
+## Phase 0 — Cut and pin the contract
 
 Status: in progress.
 
-- Define the envelope, human/Agent authorship, delivery states, and local-node boundary.
-- Define REST cursor synchronization, WebSocket acceleration, outbox/inbox, and receipts.
-- Set the initial group profile at 500 members and separate transport encryption from message-layer E2EE.
-- Define LAN discovery, baseline transport, capability negotiation, and network-device non-dependencies.
-- Record the clean-room reference policy and the public prior-art references.
+- Define the envelope, authorship, independent delivery/read/action facts, and local-node boundary.
+- Define the four durable concepts, local operational rows, merge/conflict rules, cursor scope, and crash boundaries.
+- Define ordinary TCP/HTTPS pull, optional WSS hints, explicit pairing, and the fact that routers and switches are deployment controls.
+- Define the 500-principal group profile, its membership-authority proposal, and the separate E2EE gate.
+- Keep bilingual entry docs and decisions; make the docs check meaningful enough to catch missing or empty counterparts.
 
-Exit evidence: paired bilingual specs and ADRs for envelope semantics, LAN transport, sync, group capacity, and encryption scope.
+Exit evidence: a reader can name the authoritative event record, the projection function, the cursor scope, and the failure response for a duplicate, conflict, crash, and stale key.
 
-## Phase 1 — Single-node durable state
+## Phase 1 — Single-node MVP
 
-Planned.
+Status: runnable local prototype; hardening continues.
 
-- Implement SQLite tables for identities, devices, envelopes, bodies, events, outbox, inbox, receipts, and projections.
-- Support append-only signed events, JSONL export, replay, expiry, revocation, and idempotent insertion.
-- Implement local notification projections and separate delivered, presented, read, acknowledged, and acted states.
-- Produce a local why-this-collaborator explanation from a task context.
+- Implement one TypeScript node and one SQLite database.
+- Implement immutable message events, command/delivery idempotency, local inbox projections, read markers, and approval/action attempts.
+- Expose the small local API: health, node info, create envelope, scoped sync, object fetch, and receipt/action commands.
+- Provide a human envelope-cover preview and an offline fixture.
+- Exercise duplicate/out-of-order delivery, cursor pull, crash recovery, approval expiry, and the node-to-UI contract.
 
-Exit evidence: deterministic fixtures reconstruct the same projections from the same event set, including duplicate and out-of-order events.
+Exit evidence: `pnpm contract:smoke` makes a real node response pass through the real UI parser and records an approval without duplicating the event; crash and peer evidence remain open.
 
 ## Phase 2 — Paired two-node transport
 
 Planned.
 
-- Add explicit device pairing, stable Peer IDs, capability negotiation, and authenticated sessions.
-- Implement REST envelope writes, cursor-based sync, content-addressed body fetch, and idempotent receipts.
-- Add WebSocket event hints, heartbeat, flow control, graceful close, reconnect backoff, and cursor recovery.
-- Test changing IP addresses, sleeping nodes, firewall rejection, half-open sockets, and missing mDNS.
+- Add explicit pairing and authenticated peer sessions.
+- Make REST pull the recovery contract; add WSS only as a wake-up hint.
+- Add bounded queues, retries, backoff, log epochs, and reset recovery.
+- Test ordinary TCP, IP changes, sleeping nodes, firewalls, half-open sockets, and missing mDNS.
 
-Exit evidence: two nodes complete human-to-Agent and Agent-to-Agent handoffs with no central service, and recover after forced connection loss without duplicate inbox entries.
+Exit evidence: forced socket loss converges after pull recovery with one inbox item and no silent cursor skip.
 
 ## Phase 3 — Envelope UI and Agent policy
 
 Planned.
 
-- Render the envelope cover locally while body and surface references are unavailable.
-- Add human, delegated Agent, autonomous Agent, and system authorship display.
-- Add risk, intent, expiry, capability, approval, and fan-out policies for Agent messages.
-- Add a local inbox, notification grouping, human approval gate, detail surface, and audit view.
+- Render the cover before the body and keep untrusted surfaces inert.
+- Show human, delegated Agent, autonomous Agent, and system authorship.
+- Add risk, intent, expiry, capability, approval, fan-out, and byte policies.
+- Use one obvious next action, immediate feedback, reversible choices, and a compact audit trail.
 
-Exit evidence: a user can inspect the sender, authority, context references, actions, and delivery state before approving an Agent action.
+Exit evidence: a person can inspect sender, authority, context, audience, and action before approving, and can undo a local dismissal.
 
-## Phase 4 — Group chat and message-layer encryption
-
-Planned.
-
-- Implement group membership, invitations, removals, device changes, per-device read watermarks, and bounded fan-out.
-- Enforce a hard 500-member profile limit.
-- Evaluate an established asynchronous group E2EE implementation, with MLS as the primary candidate.
-- Implement key lifecycle, offline catch-up, relay storage of ciphertext, and fail-closed behavior when keys are unavailable.
-- Load-test 2, 50, 200, and 500-member groups.
-
-Exit evidence: capacity, p95 delivery latency, bytes per member, receipt volume, key rotation, removal, offline recovery, and relay failure reports; the product only claims E2EE after message-layer tests pass.
-
-## Phase 5 — LAN discovery and bounded peer exchange
+## Phase 4a — Groups over the event log
 
 Planned.
 
-- Add DNS-SD over mDNS for local-link discovery, explicit pairing fallback, and configured rendezvous peers.
-- Add peer exchange or a bounded DHT for routed segments without payload broadcast.
-- Add digest-first anti-entropy, selected relay/mailbox replication, deduplication, backpressure, and expiry.
-- Measure discovery and synchronization at 100, 1,000, 10,000, and 20,000 simulated participants.
+- Implement the group membership state machine and one designated membership signer per group.
+- Enforce the 500 active-principal profile at signed version commits; initial profile permits one active device per principal.
+- Use bounded direct fan-out and unicast/bounded read receipts.
+- Measure 2, 50, 200, and 500 principals at the actual device count.
 
-Exit evidence: a network budget report covers multicast volume, peer degree, duplicates, bytes, stale state, queue depth, p95 latency, and recovery time.
+Exit evidence: cap-boundary concurrency, signer loss, conflict quarantine, reconnect, receipt amplification, and queue limits are reported.
+
+## Phase 4b — Message-layer E2EE
+
+Planned.
+
+- Evaluate an established asynchronous group protocol, with MLS as a candidate.
+- Define epoch commits, offline catch-up, stale-sender behavior, removal, rejoin, backup, and user-visible key recovery before integration.
+- Keep transport encryption and message-layer E2EE language separate.
+
+Exit evidence: group content is not claimed as E2EE until key lifecycle, removal, offline recovery, and relay ciphertext tests pass.
+
+## Phase 5 — Discovery and bounded exchange
+
+Planned later.
+
+- Add optional mDNS/DNS-SD hints, configured rendezvous, and bounded peer exchange.
+- Keep discovery, query expansion, and anti-entropy budgets separate.
+- Treat the 10,000–20,000 LAN participant envelope as a measurement target, not a supported capacity claim.
+
+Exit evidence: a network budget report covers peer degree, multicast, bytes, duplicates, stale state, queue depth, and recovery on representative LAN/Wi-Fi networks.
 
 ## Phase 6 — DeepSeek Harness plugin
 
 Planned.
 
-- Package Linko as a DSH plugin with host and client faces.
-- Expose tools for asking, checking the inbox, inspecting recommendations, reading scoped detail, drafting replies, and approving actions.
-- Keep network side effects, policy decisions, and persistence visible through normal Harness composition.
-- Add plugin install, reload, background delivery, and failure-recovery scenarios.
+- Package the local node as a DSH plugin with host and client faces.
+- Expose ask, inbox, inspect, draft, approve, and scoped-detail tools using the public envelope and sync contracts.
+- Keep network side effects and policy decisions visible through normal Harness composition.
 
-Exit evidence: the DSH plugin uses the public Linko envelope and sync contracts without a DSH-only wire format.
+Exit evidence: the plugin can be replaced by another client without changing the wire contract.
 
-## Phase 7 — Deterministic WASM and enhanced transports
+## Parking lot
 
-Planned.
-
-- Move validated deterministic work into a Rust crate where shared Node/browser behavior has a measured benefit.
-- Fuzz event parsing, signature checks, digest comparison, redaction, graph layout, and routing budgets.
-- Add optional QUIC, WebTransport, or libp2p adapters only when they improve a measured scenario and preserve baseline fallback.
-- Compare TypeScript and WASM projections using cross-runtime fixtures.
-
-Exit evidence: every enhanced feature has a capability matrix, benchmark, fallback test, and documented reason for its complexity.
-
-## Phase 8 — Ecosystem and interoperability
-
-Planned.
-
-- Publish the protocol, TypeScript SDK, DSH plugin, and reference client as separate packages.
-- Add adapters for other local Agents without making DSH the only client.
-- Publish interoperability examples, threat-model updates, migrations, and a compatibility policy.
-
-Exit evidence: a third-party client can discover, request, synchronize, and answer a scoped task using the public protocol.
+No phase or release date is committed for DHT, Merkle synchronization, blockchain consensus, a graph database, QUIC/WebTransport/libp2p, >500-member groups, >1,000-peer operations, or Rust/WASM. Each needs a measured bottleneck, bounded scope, fallback behavior, and a fresh review.

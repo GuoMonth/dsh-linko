@@ -5,10 +5,24 @@
   "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@12.5.0",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "docs:check": "node scripts/docs-check.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "node:build": "tsc -p packages/node/tsconfig.json",
+    "node:start": "pnpm node:build && node packages/node/dist/cli.js",
+    "node:smoke": "pnpm node:build && node packages/node/smoke.mjs",
+    "contract:smoke": "pnpm web:build && pnpm node:build && node packages/node/contract-smoke.mjs",
+    "smoke": "pnpm node:smoke",
+    "web:build": "node packages/web/scripts/build.mjs",
+    "web:serve": "node packages/web/scripts/serve.mjs",
+    "web:preview": "pnpm --filter @dsh-linko/web preview",
+    "web:smoke": "pnpm --filter @dsh-linko/web smoke"
   },
-  "devDependencies": { "typescript": "7.0.2" }
+  "devDependencies": {
+    "@types/node": "24.8.0",
+    "typescript": "7.0.2"
+  }
 }

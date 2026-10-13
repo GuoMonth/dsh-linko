@@ -5,7 +5,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2024",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["packages/**/*.ts", "scripts/**/*.ts"]
 }

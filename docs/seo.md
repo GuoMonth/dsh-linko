@@ -6,28 +6,28 @@ Linko uses repository metadata and clear public terminology before it adds a doc
 
 ## Canonical description
 
-Open-source, local-first collaboration mesh for DeepSeek Harness: envelope-based agent messaging, decentralized LAN/P2P sync, evidence-backed collaborator discovery, subjective trust ledgers, bounded group chat, WebSocket transport, TypeScript 7, and Rust/WebAssembly.
+Open-source, local-first envelope messaging for DeepSeek Harness: a TypeScript node, SQLite-backed local state, scoped REST cursor synchronization, WebSocket wake-up hints, evidence-backed collaborator discovery, and a 500-principal group profile with a separate E2EE milestone.
 
 ## Primary terms
 
 - DeepSeek Harness plugin
 - DSH plugin ecosystem
 - local-first agent collaboration
-- LAN agent mesh
-- explainable agent routing
-- subjective trust graph
-- signed cognitive ledger
-- bounded gossip protocol
-- decentralized LAN IM
-- P2P end-to-end messaging
+- LAN agent messaging
+- explainable collaborator discovery
+- subjective signed capability claims
 - message envelope protocol
 - REST cursor synchronization
+- WebSocket wake-up hints
 - group chat up to 500 members
-- TypeScript 7 and Rust WebAssembly
+- TypeScript 7 and pnpm 12
+- human-in-the-loop Agent approval
+
+Do not use “P2P end-to-end messaging”, “blockchain reputation”, or “zero-configuration LAN” as current product claims. They describe work that is either conditional, out of scope, or not yet evidenced.
 
 ## Repository metadata
 
-The GitHub description leads with DeepSeek Harness and local-first agent collaboration. Topics use the primary terms without repeating near-duplicates. README links point to the specification, architecture, roadmap, and contribution pages so search visitors can reach stable project facts.
+The GitHub description leads with DeepSeek Harness and local-first agent collaboration. Topics use the primary terms without repeating near-duplicates. README links point to stable specifications, the architecture, review record, roadmap, and contribution pages.
 
 ## Naming rule
 

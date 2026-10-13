@@ -1,0 +1,15 @@
+{
+  "name": "@dsh-linko/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Linko envelope inbox — a dependency-free local-first UI.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "preview": "node scripts/build.mjs && node scripts/serve.mjs",
+    "smoke": "node scripts/build.mjs && node scripts/smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

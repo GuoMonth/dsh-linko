@@ -2,50 +2,44 @@
 
 English | [中文](0004-group-chat-and-e2ee.zh.md)
 
-Status: draft.
+Status: draft. Membership authority and encryption selection are explicit decision gates.
 
-## Scope
+## Count the actual participants
 
-The first Linko group chat profile supports at most 500 members, including people, Agents, and service identities. This is a product and protocol limit for the initial profile, not a claim that a LAN cannot carry more traffic. A client MUST reject a membership change that would exceed the profile limit.
+The first profile caps a group at 500 active member principals, including human, Agent, and service principals. Propose one active device per principal initially, so the device/key-leaf budget is also 500. Multiple devices require a separate device cap and measurements. This is a product bound, not performance or security evidence.
 
-## Group model
+A local “reject the 501st join” check cannot enforce a hard cap under partitions: two admins seeing 499 members can each admit one, producing 501. Do not ship that rule as sufficient.
 
-A group is an event stream with a stable group ID, membership events, per-sender sequence numbers, and a policy describing who may invite, remove, post, request context, and approve Agent actions. The group event log is replicated selectively. A member receives events addressed to the group only after membership and visibility checks.
+## Membership authority proposal
 
-The protocol does not create a full mesh of 500 WebSocket connections per member. A node maintains a small set of peer sessions and uses direct delivery, selected relays, or a bounded topic mesh. Group fan-out is a delivery concern; group semantics remain in the event log.
+The simplest proposed model is one designated membership signer per group, with a signed version and parent hash. Concurrent proposals are queued or rejected against the current version. Validating clients reject an over-cap commit or a broken parent chain.
 
-The UI MUST distinguish:
+This is decentralized between groups and nodes, with centralized membership writes inside one group. If the signer is offline, existing members can exchange messages but membership changes wait. Automatic election, multi-admin consensus, and failover are outside the initial profile. Authority transfer, device replacement, conflict quarantine, and backup recovery must be decided before group implementation.
 
-- a human-authored message;
-- a delegated Agent message;
-- an autonomous Agent message;
-- a system membership, receipt, or synchronization event.
+A valid commit records authority and roster; activation additionally needs required keys. Missing parents remain pending, conflicting children stop membership-dependent operations. This proposal is not yet user-approved. Alternatives require either consensus/coordination or an explicitly weaker cap/availability contract.
 
-Agent messages in a group carry an intent, scope, expiry, and action policy. A group administrator MAY require human approval for Agent posts, context sharing, invitations, and fan-out.
+## Delivery and receipts
 
-## Encryption boundary
+Start with bounded direct fan-out through a connection pool. A 500-member group can require 499 deliveries for one post; LAN bandwidth does not eliminate that cost. Do not establish 500 persistent connections at every node.
 
-Transport encryption protects a single peer session. It does not protect a message from a mailbox or relay. Group message content MUST be encrypted at the message layer before it is stored by a relay that is not an intended recipient.
+Membership, post permission, authorship, Agent delegation, context access, and approval are separate checks. A removed device cannot produce newly authorized group events. Historical valid messages remain auditable.
 
-Linko will not invent a cryptographic protocol. The design will evaluate an established asynchronous group protocol, with IETF Messaging Layer Security (MLS) as the primary candidate for the group profile. The evaluation must cover membership changes, offline members, device addition and removal, forward secrecy, post-compromise security, key recovery, and implementation availability.
+Private read state stays local by default. Optional shared receipts use bounded event coverage per device and unicast to the author or a specified aggregator. Do not broadcast per-message, per-device read updates to every member. Notification grouping and unread state are separate from network receipts.
 
-Until group message-layer encryption is implemented and tested, the product MUST describe group transport as authenticated and encrypted in transit rather than as end-to-end encrypted. A group that cannot establish the required keys MUST fail closed for protected content instead of silently downgrading.
+Selected relays/mailboxes are a later availability extension. They need explicit quotas, topology, metadata disclosures, and retention. They cannot promise delivery without a reachable authorized copy.
 
-## Key and membership events
+## Encryption decision gate
 
-Key changes, membership changes, and device changes are signed events with an auditable author and effective time. Removing a device MUST prevent it from decrypting future protected messages. A member joining a group MUST NOT automatically receive historical plaintext without an explicit history-sharing decision.
+Authenticated TLS sessions are not message-layer E2EE. A transport-only group prototype must be labeled as such and is not the protected-content release. Non-recipient storage must receive only ciphertext. Meaningful cover text, body, and human surface need the same audience protection; routing metadata remains visible.
 
-The cover may expose the minimum metadata required for delivery and notification. The body, evidence, and UI surface are encrypted or capability-protected according to the group policy.
+Evaluate an established implementation of a reviewed protocol, with MLS as a candidate. Do not invent cryptography, assume MLS transports messages, or claim that it resolves concurrent membership commits automatically. MLS integration must agree with the selected membership ordering and authority.
 
-## Capacity evidence
+Before integration, define bounded epoch/commit retention, missed-commit delivery, stale-sender policy, rejoin/Welcome behavior, backup, and user-visible key-recovery states. If keys or required commits are missing, protected sends remain blocked with an explanation; there is no plaintext fallback. Offline catch-up is conditional on authorized retained content and key history.
 
-Before the 500-member profile is released, tests must cover at least 2, 50, 200, and 500 members, including:
+Removal protects content encrypted under new keys after remaining senders adopt them. It cannot protect content that an unaware offline sender still encrypts with old keys, erase cached plaintext, or retract old ciphertext. New members receive post-join content by default; history sharing is a separate explicit decision.
 
-- join, leave, invite, and device replacement;
-- offline catch-up and reconnect;
-- message fan-out and deduplication;
-- receipt and notification volume;
-- key rotation and failed key installation;
-- one or more relay nodes becoming unavailable.
+## Evidence before release
 
-The test report must include p95 delivery latency, bytes per member, pending queue size, duplicate event rate, and recovery time.
+Separate the delivery milestone from the E2EE milestone. The 500 profile needs 2/50/200/500-principal tests at the actual supported device count. Record p95 latency, sender/receiver bytes, queue depth, connection count, receipt amplification, and recovery time.
+
+Required scenarios: concurrent cap-boundary joins, signer loss, conflicting versions, offline members, stale keys, device replacement, removals, late messages, denied history, partial body fetch, and any optional relay failure. Passing a simulation does not establish capacity on Wi-Fi; record hardware, traffic, retention, and network assumptions.

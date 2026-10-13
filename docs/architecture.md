@@ -2,116 +2,74 @@
 
 English | [中文](architecture.zh.md)
 
-Linko is a decentralized local collaboration system built around a local node. A local node owns durable state and can act as both a client-facing service and a peer. No central service is required for normal LAN operation, and no node is assumed to be trusted merely because it is reachable.
+Status: design baseline, revised after the simplicity review. A local single-node MVP exists; peer capacity and cryptographic claims remain implementation gates.
 
-The architecture uses familiar network layers for reliability. Linko adds its product behavior at the message, policy, and projection layers rather than replacing IP routing, switch forwarding, or decades of instant-messaging delivery practice.
-
-## Runtime shape
+## Small kernel
 
 ```text
-DSH plugin / CLI / Web UI
-            │ localhost REST + WebSocket
-            ▼
-        Linko node
-  SQLite event log and projections
-  outbox / inbox / receipts / policies
-            │ peer sessions
-            ▼
-     other Linko nodes on the LAN
-  direct delivery, selected relays, sync
+DSH / CLI / human inbox
+          │ authenticated local API
+          ▼
+one TypeScript node + one local SQLite database
+          │ HTTPS request/sync + optional WSS wake-up hints
+          ▼
+another authenticated node
 ```
 
-The local UI connects to one local node. The node manages peer discovery, authentication, synchronization, notifications, and storage. This keeps peer networking out of every UI and gives CLI, Web, and Harness clients the same recovery behavior.
+Three responsibilities are enough: **contracts and pure state transitions**, **transactional storage**, and **I/O adapters**. They are modules in one process, not microservices. The core decides from explicit inputs; it does not open sockets, read clocks, call models, or send notifications. The host validates input, runs a local transaction, then performs queued effects.
 
-## Layers and ownership
+Committed domain records are the source of durable facts. REST exposes those records; WebSocket announces changes. Neither transport defines truth. A peer cursor belongs to its issuing node and authorized scope; it is not a global conversation sequence.
 
-| Layer | Owns | Baseline | Optional enhancement |
-| --- | --- | --- | --- |
-| Product envelope | cover, body references, human/Agent authorship, actions, approvals | Linko envelope schema | richer declarative surfaces |
-| Local state | identities, keys, events, inbox, outbox, receipts, projections | SQLite; JSONL export/replay | encrypted object store and replicas |
-| Sync protocol | cursors, event ranges, digests, deduplication, anti-entropy | REST pull and idempotent writes | Merkle summaries and selective replicas |
-| Peer session | pairing, authentication, liveness, flow control | TCP + HTTP/1.1 + WebSocket | QUIC, WebTransport, libp2p adapters |
-| Discovery | local service discovery and peer endpoints | DNS-SD over mDNS or explicit pairing | rendezvous peer, bounded DHT, peer exchange |
-| Delivery policy | retry, mailbox, fan-out, expiry, hop and byte budgets | local queues and selected peers | encrypted multi-replica mailboxes |
-| Group layer | membership, receipts, 500-member cap, key events | bounded topic delivery | larger profile after new evidence |
-| Harness adapter | DSH tools, sessions, approvals, background work | local plugin interface | adapters for other Agent hosts |
-| Human surface | inbox, envelope cover, detail surface, audit and settings | TypeScript/HTML client | OpenUI/A2UI/MCP Apps adapters |
+See [data and state transitions](specs/0005-state-and-storage.md) for keys, ownership, transaction boundaries, and failure behavior.
 
-## Network device boundary
+## Separate three graphs
 
-The baseline profile works with ordinary IP connectivity and does not require special router or switch configuration. Linko does not implement application-level Ethernet or IP routing.
+- **Connectivity**: which devices can communicate. Use ordinary IP and direct authenticated connections.
+- **Conversation membership**: who may receive which messages. Membership and encryption rules govern this.
+- **Cognition**: who thinks a person or Agent can help, based on which evidence. Compute a local, subjective graph projection over scoped claims.
 
-Network features can raise an installation's ceiling, but they are capability inputs rather than prerequisites:
+An endorsement never creates network reachability or grants authorization. Finding a collaborator first queries local indexes; bounded remote expansion comes later. No DHT, consensus blockchain, global score, global event order, or graph database is needed for the first working pair.
 
-- IPv6 and DNS-SD can reduce manual address configuration.
-- Multicast snooping can reduce discovery noise when the network supports it.
-- VLANs, ACLs, and 802.1X can provide operator-managed segmentation.
-- QoS can prioritize interactive traffic over bulk object transfer.
-- HTTP/2, QUIC, or WebTransport can improve multiplexing and reconnect behavior.
+## Durable data, local operations, derived views
 
-The node probes and negotiates available capabilities, then falls back to TCP, REST, and WebSocket. A user should not have to change switch firmware or router settings to send a message. A VLAN or firewall boundary can prevent discovery; explicit pairing or a configured rendezvous peer handles that case.
+Immutable signed domain events record messages, membership changes, and shared claims. SQLite rows also hold local delivery jobs, cursor checkpoints, read state, and action attempts. Those operational rows are mutable and private; they are not all signed, broadcast, or put into an eternal ledger.
 
-At the expected 10,000–20,000 participant scale, one broadcast domain and a full mesh are inappropriate assumptions. mDNS is limited to a local link. Peer exchange, rendezvous, or a bounded DHT can connect segments without broadcasting message payloads to every participant.
+Indexes and views build the inbox, unread count, audit display, and collaborator recommendations. JSONL is a versioned export, not a second database or transaction log. Retention, deletion, schema migration, and minimal deduplication records need explicit policy; an append-only history does not mean keeping private payloads forever.
 
-## State and event model
+Identity has separate principal, device, and Agent/delegation fields. Agent-composed text approved by a person remains Agent-composed. A signature verifies a key and an asserted author; it cannot prove a human physically typed text.
 
-The logical model is a property graph: people, Agents, projects, capabilities, claims, evidence, conversations, and policies are vertices and typed edges. The synchronization model is an append-only signed event log. SQLite is the first physical store because it provides transactions, indexes, local queries, and deterministic replay without a central database.
+## Networking: one baseline
 
-The core event fields are:
+Use authenticated HTTPS over TCP for peers, with WSS hints when useful and bounded long polling when a socket is unavailable. Both use the same authorization and synchronization semantics. Local browser UI talks only to its local node; it does not manage LAN certificates or peer discovery. The loopback MVP applies an explicit Origin allowlist and is not a trusted network service; peer authorization is mandatory before binding beyond loopback.
 
-- stable event and actor identifiers;
-- per-author sequence and causal references;
-- envelope kind and immutable payload hash;
-- author, composer, sender, delegator, and audience;
-- visibility, expiry, revocation, and action policy;
-- conversation or group identifier;
-- delivery, receipt, and synchronization metadata.
+Pair an endpoint and verify its key out of band. mDNS/DNS-SD is optional local-link convenience; advertisements contain minimal endpoint/version information, not capability histories. No normal operation depends on public bootstrap infrastructure. Multi-subnet discovery is a later deployment option.
 
-There is no global reputation score or global message order. A recommendation is a user- and task-specific projection over signed claims and evidence. Concurrent events remain inspectable; projections can choose a view without deleting competing claims.
+Routers and switches need no Linko-specific features. Working IP reachability and permitted ports are prerequisites. Manual addressing solves discovery failure, not blocked traffic. VLAN ACLs, Wi-Fi client isolation, and firewalls can require operator configuration; a rendezvous node cannot bypass them.
 
-## Message and group behavior
+Do not probe or configure QoS, SDN, VLANs, jumbo frames, TSN, or hardware multicast in the application. In particular, multicast snooping is not a general cure for mDNS: link-local multicast has special forwarding rules. IPv6 is address-family support; QUIC and HTTP/2 are host protocols, not new switch features. Consider additional transports only after an observed bottleneck. [DNS-SD](https://www.rfc-editor.org/rfc/rfc6763.html), [mDNS](https://www.rfc-editor.org/rfc/rfc6762.html), [IGMP snooping guidance](https://www.rfc-editor.org/rfc/rfc4541.html).
 
-Every message is a Linko envelope with a cover, optional inline body, body reference, optional human surface reference, and seal. The cover is sufficient for an inbox row and notification. Large bodies are fetched from a local cache or a scoped peer reference after the envelope is persisted.
+## Messages, groups, and availability
 
-Human, delegated Agent, autonomous Agent, and system messages are distinct at the protocol level. Agent envelopes carry intent, risk, expiry, authority, and fan-out policy. Text does not grant execution authority.
+An [envelope](specs/0002-message-envelope.md) has a short cover and inline content or an immutable object reference. Delivered cover, cached body, human read state, and approved action are independent facts. A link alone cannot guarantee offline content: the recipient must obtain a verified local copy.
 
-The initial group profile is capped at 500 members. It does not create 500 connections per member. A group uses an event stream, selected delivery paths, bounded fan-out, per-device read watermarks, and membership policy. Group message-layer encryption is a separate requirement from transport encryption; the initial design evaluates MLS or another established asynchronous group protocol and does not invent cryptography.
+The first group profile targets at most **500 member principals**. Initial implementation uses one active device per principal; multiple devices need separate limits and evidence. The proposed simplest group control model is one designated membership signer per group, while members exchange messages directly. This tradeoff and the alternative of replicated authority remain a decision gate in [the group spec](specs/0004-group-chat-and-e2ee.md).
 
-## Synchronization and delivery
+Start by measuring bounded direct fan-out through a connection pool, not full-mesh persistent sockets. Up to 499 recipients still means 499 deliveries per post. A count limit alone is not a capacity test. Groups, encrypted offline mailboxes, and 20,000-person discovery are separate milestones.
 
-REST is the source of truth for history, recovery, and convergence. WebSocket is an acceleration channel for live event hints, small events, receipts, and UI responsiveness. A client sends its last cursor when opening a session. A dropped or stale socket is repaired through `/v1/sync`, not by assuming that a push was received.
+Without an authorized online copy there is no delivery. Without retained history there is no complete catch-up. There is no system-wide server, mandatory relay, public DHT, or automatic leader election in the initial design.
 
-The sender persists to its outbox before sending. The recipient persists before reporting `delivered`. Delivery is at least once and receiver-side deduplication is required. Read and action states are separate events or projections; a notification is a local side effect.
+## Encryption and UI boundaries
 
-Nodes exchange compact digests and fetch missing ranges. Discovery, task query expansion, and anti-entropy synchronization have independent budgets. A hop limit is one safety budget among fan-out, byte, time, queue, and deduplication limits.
+LAN reachability does not imply trust. TLS authenticates peer sessions; message-layer E2EE protects content through non-recipient storage. Pairwise and group key lifecycle must be designed before sending real sensitive content. MLS is a candidate for group encryption, not a selected dependency or delivery system. Never silently fall back to plaintext.
 
-## Security boundaries
+Encrypt meaningful covers, bodies, and surface data for their intended audience; relays need only minimal routing metadata. Cached plaintext cannot be recalled. A membership removal protects messages encrypted under the updated keys after senders adopt the change; it cannot retroactively secure stale offline senders.
 
-LAN reachability is not trust. Devices are paired explicitly or verified through a controlled enrollment flow. Peer sessions use authenticated encryption. Message bodies intended for relay or mailbox storage are encrypted at the message layer. The local node validates signatures, scopes, expiry, capabilities, and size before writing an event or invoking a tool.
+Human cards render known components. No arbitrary peer HTML/JavaScript execution. Agent input, UI actions, and remote risk labels cannot grant authority. The recipient checks delegation, current policy, payload digest, membership version, expiry, and action ID.
 
-UI surfaces are rendered from an allowlisted component catalog. Remote HTML or JavaScript does not become executable authority. A UI action is untrusted input and is rechecked against the current message version, actor, capability, and expiry.
+## Verification and extension rule
 
-## WebAssembly boundary
+Start with explicit transition tables, typed commands/events, SQL constraints, and crash/reorder/duplicate traces. Use property-based tests against an independent model when code exists. Small TLA+/TLC models will check delivery/cursor races and membership serialization before those features ship. Lean 4 is reserved for a specific unbounded proof obligation; it is not a runtime dependency or a substitute for testing storage and networking. See [ADR 0008](decisions/0008-minimal-kernel-and-verification.md).
 
-TypeScript 7 is the behavioral reference. Rust/WebAssembly is reserved for deterministic, cross-runtime work that benefits from one implementation: event and signature validation, digest comparison, content hashing, bounded routing policy, graph layout, and context redaction. Filesystem access, sockets, WebSocket lifecycle, notifications, and DSH lifecycle remain host responsibilities.
+Rust/WASM remains a planned experiment for a measured deterministic workload, not socket ownership or custom cryptography. Optional transports, Merkle trees, gossip, richer UI adapters, and distributed recommendation algorithms need a demonstrated bottleneck, one bounded scope, and an acceptance test before they enter the baseline.
 
-WASM is introduced only after TypeScript fixtures establish behavior and a boundary decision records the measurable benefit. Optional QUIC or libp2p transports follow the same rule: they cannot change envelope or synchronization semantics.
-
-## Reference patterns
-
-Linko studies public protocol behavior and documentation without copying implementation code:
-
-- [Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/) for cursor-based sync, receipts, and history recovery.
-- [XMPP Stream Management](https://xmpp.org/extensions/attic/xep-0198-1.6.html), [delivery receipts](https://xmpp.org/extensions/xep-0184.html), and [displayed markers](https://xmpp.org/extensions/attic/xep-0333-1.0.0.html) for mature IM semantics.
-- [DNS-SD](https://www.rfc-editor.org/info/rfc6763/) and [mDNS](https://www.rfc-editor.org/info/rfc6762/) for zero-configuration local discovery.
-- [WebSocket RFC 6455](https://www.rfc-editor.org/info/rfc6455/) for connection, liveness, close, and reconnect behavior.
-- [libp2p secure channels](https://libp2p.io/docs/secure-channels-overview/) and [PubSub](https://libp2p.io/docs/pubsub/) for optional peer transport patterns.
-- [Messaging Layer Security RFC 9420](https://www.rfc-editor.org/info/rfc9420/) for the group encryption evaluation.
-
-## Open questions before implementation
-
-- Which pairing ceremony works across ordinary Wi-Fi, VLANs, and WSL2 without weakening identity verification?
-- Which established message-layer encryption implementation has the best TypeScript and Rust integration for the first group profile?
-- Which local mailbox replication policy gives useful offline delivery without turning a peer into an undisclosed central server?
-- Which envelope size threshold minimizes LAN round trips while keeping notifications and inbox sync small?
-- Which 10,000–20,000 participant simulation produces useful anti-entropy and discovery budgets?
+Reference assessment and review dispositions are in [the review record](review.md).

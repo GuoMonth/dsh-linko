@@ -166,11 +166,19 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: 24.8.0
+        version: 24.8.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/web: {}
+
 packages:
+
+  '@types/node@24.8.0':
+    resolution: {integrity: sha512-5x08bUtU8hfboMTrJ7mEO4CpepS9yBwAqcL52y86SWNmbPX8LVbNs3EP4cNrIZgdjk2NAlP2ahNihozpoZIxSg==}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
@@ -297,7 +305,14 @@ packages:
     engines: {node: '>=16.20.0'}
     hasBin: true
 
+  undici-types@7.14.0:
+    resolution: {integrity: sha512-QQiYxHuyZ9gQUIrmPo3IA+hUl4KYk8uSA7cHrcKd/l3p1OTpZcM0Tbp9x7FAtXdAYhlasd60ncPpgu6ihG6TOA==}
+
 snapshots:
+
+  '@types/node@24.8.0':
+    dependencies:
+      undici-types: 7.14.0
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
@@ -381,3 +396,5 @@ snapshots:
       '@typescript/typescript-sunos-x64': 7.0.2
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
+
+  undici-types@7.14.0: {}
