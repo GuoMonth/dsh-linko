@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Linko is an open-source, local-first collaboration mesh for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It helps agents find the right collaborator, exchange scoped context, and continue a task under explicit human-controlled policies.
+Linko is open-source, local-first envelope messaging for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It helps agents find the right collaborator, exchange scoped context, and continue a task under explicit human-controlled policies.
 
 Linko is an early runnable MVP. The repository remains specification-driven: product boundaries, state transitions, delivery recovery, privacy rules, and architecture decisions are written beside the runtime.
 
@@ -47,7 +47,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guidance in [AGENTS.m
 
 ## Topics
 
-The repository is indexed with dsh, dsh-plugin, deepseek-harness, agent-collaboration, local-first, peer-to-peer, websocket, and typescript.
+The repository is indexed with dsh, dsh-plugin, deepseek-harness, agent-collaboration, local-first, lan-messaging, envelope-messaging, human-in-the-loop, sqlite, typescript, and pnpm.
 
 ## License
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-Linko 是面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的开源、本地优先协作网。它帮助 Agent 找到合适的协作者，在明确的人类控制策略下交换有范围的上下文并继续任务。
+Linko 是面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的开源、本地优先信封消息项目。它帮助 Agent 找到合适的协作者，在明确的人类控制策略下交换有范围的上下文并继续任务。
 
 Linko 已进入可运行的早期 MVP。本仓库仍采用规格驱动：运行时代码与产品边界、状态转移、投递恢复、隐私规则和架构决策并列维护。
 
@@ -47,7 +47,7 @@ Linko 计划作为 DeepSeek Harness 生态的社区插件和伴随协议。它�
 
 ## Topics
 
-仓库主题包括 dsh、dsh-plugin、deepseek-harness、agent-collaboration、local-first、peer-to-peer、websocket 和 typescript。
+仓库主题包括 dsh、dsh-plugin、deepseek-harness、agent-collaboration、local-first、lan-messaging、envelope-messaging、human-in-the-loop、sqlite、typescript 和 pnpm。
 
 ## 许可证
 
