@@ -153,6 +153,7 @@ export class NodeStore {
   readonly db: DatabaseSync;
   readonly dbPath: string;
   private closed = false;
+  private readonly commitListeners = new Set<() => void>();
   private readonly clock: () => string;
   private readonly peerMap: Map<string, PeerConfig>;
   constructor(options: NodeStoreOptions = {}) {
@@ -196,7 +197,19 @@ export class NodeStore {
   get nodeId(): string { return String(asRow(this.db.prepare("SELECT value FROM meta WHERE key = 'node_id'").get())?.value); }
   get logEpoch(): string { return String(asRow(this.db.prepare("SELECT value FROM meta WHERE key = 'log_epoch'").get())?.value ?? "unknown"); }
   get isClosed(): boolean { return this.closed; }
-  close(): void { if (this.closed) return; this.closed = true; this.db.close(); }
+  close(): void { if (this.closed) return; this.closed = true; this.commitListeners.clear(); this.db.close(); }
+  /** Local invalidation after commit, including peer ingress and background jobs.
+   * Duplicate commits may also invalidate; observers must never grant authority. */
+  onCommit(listener: () => void): () => void {
+    this.commitListeners.add(listener);
+    return () => { this.commitListeners.delete(listener); };
+  }
+  private commit(): void {
+    this.db.exec("COMMIT");
+    for (const listener of this.commitListeners) {
+      try { listener(); } catch { /* Advisory observers cannot fail a committed write. */ }
+    }
+  }
   health(): { status: "ok"; nodeId: string; storage: "sqlite"; logEpoch: string } { this.db.prepare("SELECT 1").get(); return { status: "ok", nodeId: this.nodeId, storage: "sqlite", logEpoch: this.logEpoch }; }
   nodeInfo(): Record<string, unknown> {
     return { nodeId: this.nodeId, protocolVersion: "v1", schemaVersion: 2, logEpoch: this.logEpoch, storage: "sqlite", capabilities: { envelopes: true, receipts: true, cursorSync: true, peers: true, send: true, outbox: true, websocketHints: false }, notes: ["REST is the canonical sync path; peer delivery uses authenticated HTTPS and durable outbox retries."] };
@@ -278,7 +291,7 @@ export class NodeStore {
   }
   insertEnvelope(value: unknown, attemptId?: unknown, commandId?: unknown, clientId?: unknown, sourcePeerId?: string): InsertResult {
     this.db.exec("BEGIN IMMEDIATE");
-    try { const result = this.insertEnvelopeTx(value, attemptId, commandId, clientId, sourcePeerId); this.db.exec("COMMIT"); return result; }
+    try { const result = this.insertEnvelopeTx(value, attemptId, commandId, clientId, sourcePeerId); this.commit(); return result; }
     catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
   }
   send(value: unknown, peerIdValue: unknown, clientIdValue: unknown, commandIdValue: unknown): SendResult {
@@ -300,7 +313,7 @@ export class NodeStore {
           this.addChange(existingEventId, "outbox_queued");
         }
         const existingItem = this.getItem(existingEventId); const out = asRow(this.db.prepare("SELECT status FROM outbox WHERE event_id = ?").get(existingEventId));
-        this.db.exec("COMMIT"); return { eventId: String(existingCommand.event_id), item: existingItem, delivery: out && String(out.status) === "confirmed" ? "confirmed" : "queued", duplicate: true };
+        this.commit(); return { eventId: String(existingCommand.event_id), item: existingItem, delivery: out && String(out.status) === "confirmed" ? "confirmed" : "queued", duplicate: true };
       }
       const result = this.insertEnvelopeTx(candidate, undefined, commandId, clientId, undefined, false, hash);
       const timestamp = now();
@@ -313,7 +326,7 @@ export class NodeStore {
         this.addChange(result.eventId, "outbox_requeued");
       }
       const outbox = asRow(this.db.prepare("SELECT status FROM outbox WHERE event_id = ?").get(result.eventId));
-      this.db.exec("COMMIT");
+      this.commit();
       return { eventId: result.eventId, item: this.getItem(result.eventId), delivery: outbox && String(outbox.status) === "confirmed" ? "confirmed" : "queued", duplicate: result.duplicate };
     } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
   }
@@ -368,13 +381,13 @@ export class NodeStore {
           this.db.prepare("INSERT INTO actions(event_id, action_id, status, updated_at, event_digest, audience, authority, policy_version, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id, action_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, event_digest = excluded.event_digest, audience = excluded.audience, authority = excluded.authority, policy_version = excluded.policy_version, device_id = excluded.device_id").run(eventId, actionId, state, timestamp, binding.eventDigest, binding.audience, binding.authority, binding.policyVersion, binding.deviceId);
           this.addChange(eventId, "action");
         }
-        this.db.exec("COMMIT"); return { item: this.getItem(eventId), kind: "action", state, actionId };
+        this.commit(); return { item: this.getItem(eventId), kind: "action", state, actionId };
       }
       const column = state === "presented" ? "presented_at" : state === "read" ? "read_at" : "acknowledged_at";
       const result = this.db.prepare("INSERT OR IGNORE INTO receipt_facts(event_id, device_id, kind, recorded_at) VALUES (?, ?, ?, ?)").run(eventId, deviceId, state, timestamp);
       this.db.prepare(`UPDATE inbox SET ${column} = COALESCE(${column}, ?) WHERE event_id = ?`).run(timestamp, eventId);
       if (Number(result.changes) > 0) this.addChange(eventId, `receipt_${state}`);
-      this.db.exec("COMMIT"); return { item: this.getItem(eventId), kind: state, state };
+      this.commit(); return { item: this.getItem(eventId), kind: state, state };
     } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
   }
   inbox(limit = MAX_BATCH): SyncItem[] {
@@ -393,9 +406,9 @@ export class NodeStore {
     if (!row) return null; const peer = this.peer(String(row.peer_id)); const item: OutboxItem = { eventId: String(row.event_id), peerId: String(row.peer_id), status: String(row.status) as OutboxItem["status"], attempts: Number(row.attempts), nextAttemptAt: row.next_attempt_at === null ? null : String(row.next_attempt_at), ...(row.last_error ? { lastError: String(row.last_error) } : {}) }; return { item, envelope: this.getItem(item.eventId).envelope, peer };
   }
   markSending(eventId: string): OutboxItem {
-    this.db.exec("BEGIN IMMEDIATE"); try { const row = asRow(this.db.prepare("SELECT attempts, peer_id FROM outbox WHERE event_id = ?").get(eventId)); if (!row) throw new StoreError("OUTBOX_NOT_FOUND", "outbox item was not found", 404); const attempts = Number(row.attempts) + 1; const timestamp = now(); this.db.prepare("UPDATE outbox SET status = 'sending', attempts = ?, updated_at = ?, last_error = NULL WHERE event_id = ?").run(attempts, timestamp, eventId); this.addChange(eventId, "outbox_sending"); this.db.exec("COMMIT"); return { eventId, peerId: String(row.peer_id), status: "sending", attempts, nextAttemptAt: null }; } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
+    this.db.exec("BEGIN IMMEDIATE"); try { const row = asRow(this.db.prepare("SELECT attempts, peer_id FROM outbox WHERE event_id = ?").get(eventId)); if (!row) throw new StoreError("OUTBOX_NOT_FOUND", "outbox item was not found", 404); const attempts = Number(row.attempts) + 1; const timestamp = now(); this.db.prepare("UPDATE outbox SET status = 'sending', attempts = ?, updated_at = ?, last_error = NULL WHERE event_id = ?").run(attempts, timestamp, eventId); this.addChange(eventId, "outbox_sending"); this.commit(); return { eventId, peerId: String(row.peer_id), status: "sending", attempts, nextAttemptAt: null }; } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
   }
   markOutboxResult(eventId: string, ok: boolean, errorMessage?: string): OutboxItem {
-    this.db.exec("BEGIN IMMEDIATE"); try { const row = asRow(this.db.prepare("SELECT peer_id, attempts FROM outbox WHERE event_id = ?").get(eventId)); if (!row) throw new StoreError("OUTBOX_NOT_FOUND", "outbox item was not found", 404); const attempts = Number(row.attempts); const timestamp = now(); if (ok) this.db.prepare("UPDATE outbox SET status = 'confirmed', next_attempt_at = NULL, updated_at = ?, last_error = NULL WHERE event_id = ?").run(timestamp, eventId); else if (attempts >= MAX_OUTBOX_ATTEMPTS) this.db.prepare("UPDATE outbox SET status = 'abandoned', next_attempt_at = NULL, updated_at = ?, last_error = ? WHERE event_id = ?").run(timestamp, (errorMessage ?? "peer delivery failed; retry budget exhausted").slice(0, 256), eventId); else { const delay = Math.min(30_000, 250 * (2 ** Math.min(attempts - 1, 7))); const next = new Date(Date.now() + delay).toISOString(); this.db.prepare("UPDATE outbox SET status = 'retry_wait', next_attempt_at = ?, updated_at = ?, last_error = ? WHERE event_id = ?").run(next, timestamp, (errorMessage ?? "peer delivery failed").slice(0, 256), eventId); } this.addChange(eventId, ok ? "outbox_confirmed" : attempts >= MAX_OUTBOX_ATTEMPTS ? "outbox_abandoned" : "outbox_retry"); this.db.exec("COMMIT"); const result = asRow(this.db.prepare("SELECT event_id, peer_id, status, attempts, next_attempt_at, last_error FROM outbox WHERE event_id = ?").get(eventId)); if (!result) throw new StoreError("STORAGE_ERROR", "outbox result disappeared", 500); return { eventId: String(result.event_id), peerId: String(result.peer_id), status: String(result.status) as OutboxItem["status"], attempts: Number(result.attempts), nextAttemptAt: result.next_attempt_at === null ? null : String(result.next_attempt_at), ...(result.last_error ? { lastError: String(result.last_error) } : {}) }; } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
+    this.db.exec("BEGIN IMMEDIATE"); try { const row = asRow(this.db.prepare("SELECT peer_id, attempts FROM outbox WHERE event_id = ?").get(eventId)); if (!row) throw new StoreError("OUTBOX_NOT_FOUND", "outbox item was not found", 404); const attempts = Number(row.attempts); const timestamp = now(); if (ok) this.db.prepare("UPDATE outbox SET status = 'confirmed', next_attempt_at = NULL, updated_at = ?, last_error = NULL WHERE event_id = ?").run(timestamp, eventId); else if (attempts >= MAX_OUTBOX_ATTEMPTS) this.db.prepare("UPDATE outbox SET status = 'abandoned', next_attempt_at = NULL, updated_at = ?, last_error = ? WHERE event_id = ?").run(timestamp, (errorMessage ?? "peer delivery failed; retry budget exhausted").slice(0, 256), eventId); else { const delay = Math.min(30_000, 250 * (2 ** Math.min(attempts - 1, 7))); const next = new Date(Date.now() + delay).toISOString(); this.db.prepare("UPDATE outbox SET status = 'retry_wait', next_attempt_at = ?, updated_at = ?, last_error = ? WHERE event_id = ?").run(next, timestamp, (errorMessage ?? "peer delivery failed").slice(0, 256), eventId); } this.addChange(eventId, ok ? "outbox_confirmed" : attempts >= MAX_OUTBOX_ATTEMPTS ? "outbox_abandoned" : "outbox_retry"); this.commit(); const result = asRow(this.db.prepare("SELECT event_id, peer_id, status, attempts, next_attempt_at, last_error FROM outbox WHERE event_id = ?").get(eventId)); if (!result) throw new StoreError("STORAGE_ERROR", "outbox result disappeared", 500); return { eventId: String(result.event_id), peerId: String(result.peer_id), status: String(result.status) as OutboxItem["status"], attempts: Number(result.attempts), nextAttemptAt: result.next_attempt_at === null ? null : String(result.next_attempt_at), ...(result.last_error ? { lastError: String(result.last_error) } : {}) }; } catch (error) { try { this.db.exec("ROLLBACK"); } catch { /* keep original */ } if (error instanceof StoreError) throw error; throw new StoreError("STORAGE_ERROR", "storage operation failed", 500); }
   }
 }

@@ -15,6 +15,10 @@ pnpm contract:smoke
 
 The local API listens on `127.0.0.1:8787` by default. Set `LINKO_PORT`, `LINKO_DB`, `LINKO_NODE_ID`, and `LINKO_ALLOWED_ORIGINS` to change local settings.
 
+## Local live hints
+
+The local node exposes `ws://127.0.0.1:8787/v1/live` by default. A client must connect from an allowed Origin, send `{ "type": "hello", "protocolVersion": "v1" }`, and wait for `ready`. The node then sends small `hint` messages when local state may have changed. Hints contain no message body, do not own a queue or cursor, and can be lost or duplicated; clients recover through `GET /v1/sync`. Paired WSS delivery remains a later transport milestone.
+
 ## Run two paired nodes
 
 Generate a certificate for each node (use a CA and DNS/IP names appropriate to a real deployment; this short command is for a local two-node check):

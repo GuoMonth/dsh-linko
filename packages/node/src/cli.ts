@@ -38,7 +38,7 @@ localServer.listen(localPort, localHost, () => {
     console.log(`Linko peer HTTPS listener on https://${peerHost}:${actualPort}`);
   });
   else console.log("Peer HTTPS listener disabled; set LINKO_TLS_KEY and LINKO_TLS_CERT to enable paired transport.");
-  console.log("REST cursor sync is canonical; peer delivery is authenticated HTTPS with durable retries.");
+  console.log("REST cursor sync is canonical; local WebSocket hints are advisory; peer delivery is authenticated HTTPS with durable retries.");
 });
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

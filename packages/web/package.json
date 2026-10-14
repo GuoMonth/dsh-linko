@@ -10,6 +10,8 @@
     "serve": "node scripts/serve.mjs",
     "preview": "node scripts/build.mjs && node scripts/serve.mjs",
     "smoke": "node scripts/build.mjs && node scripts/smoke.mjs",
+    "live:smoke": "node scripts/build.mjs && node scripts/live-smoke.mjs",
+    "live:integration": "node scripts/live-integration.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

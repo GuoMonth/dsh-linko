@@ -35,6 +35,7 @@ export interface NodeInfo {
   readonly nodeId: string;
   readonly protocolVersion: string;
   readonly logEpoch: string;
+  readonly websocketHints: boolean;
 }
 
 export interface SyncResult {
@@ -181,10 +182,13 @@ export async function fetchNode(base: string): Promise<NodeInfo | null> {
   const record = typeof outcome.value === 'object' && outcome.value !== null
     ? (outcome.value as Record<string, unknown>)
     : {};
+  const capabilities = typeof record['capabilities'] === 'object' && record['capabilities'] !== null
+    ? record['capabilities'] as Record<string, unknown> : {};
   return {
     nodeId: typeof record['nodeId'] === 'string' ? record['nodeId'] : 'unnamed node',
     protocolVersion: typeof record['protocolVersion'] === 'string' ? record['protocolVersion'] : 'unknown',
     logEpoch: typeof record['logEpoch'] === 'string' ? record['logEpoch'] : 'unknown',
+    websocketHints: capabilities['websocketHints'] === true,
   };
 }
 

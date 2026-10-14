@@ -1,12 +1,15 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { request as httpsRequest, createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { NodeStore, StoreError, type NodeStoreOptions, type PendingOutbox } from "./store.js";
+import { LiveHub } from "./live.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
 export interface NodeServerOptions extends NodeStoreOptions {
   store?: NodeStore;
   allowedOrigins?: readonly string[];
+  /** Enable the advisory local live channel. REST remains the recovery path. */
+  websocket?: boolean;
 }
 
 function json(res: ServerResponse, status: number, value: unknown, origin?: string, allowedOrigins: readonly string[] = []): void {
@@ -58,7 +61,7 @@ function mutationContentType(req: IncomingMessage): void {
   if (contentType !== "application/json") throw new StoreError("INVALID_CONTENT_TYPE", "mutations require application/json", 415);
 }
 
-async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore, allowedOrigins: readonly string[], peerOnly: boolean): Promise<void> {
+async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore, allowedOrigins: readonly string[], peerOnly: boolean, liveHub?: LiveHub): Promise<void> {
   if (peerOnly) {
     if (req.method !== "POST" || req.url?.split("?", 1)[0] !== "/v1/peer/events") { json(res, 404, { error: { code: "NOT_FOUND", message: "peer route not found" } }); return; }
     mutationContentType(req);
@@ -85,7 +88,15 @@ async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore
     res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS"); res.setHeader("access-control-allow-headers", "content-type"); res.end(); return;
   }
   if (req.method === "GET" && url.pathname === "/v1/health") { json(res, 200, { ...store.health(), timestamp: new Date().toISOString() }, origin, allowedOrigins); return; }
-  if (req.method === "GET" && url.pathname === "/v1/node") { json(res, 200, store.nodeInfo(), origin, allowedOrigins); return; }
+  if (req.method === "GET" && url.pathname === "/v1/node") {
+    const info = store.nodeInfo();
+    if (liveHub) {
+      const capabilities = info.capabilities && typeof info.capabilities === "object" ? info.capabilities as Record<string, unknown> : {};
+      info.capabilities = { ...capabilities, websocketHints: true };
+      info.notes = [...(Array.isArray(info.notes) ? info.notes : []), "WebSocket is an advisory live channel; REST cursor sync remains canonical recovery."];
+    }
+    json(res, 200, info, origin, allowedOrigins); return;
+  }
   if (req.method === "GET" && url.pathname === "/v1/peers") { json(res, 200, { peers: store.peers() }, origin, allowedOrigins); return; }
   if (req.method === "GET" && url.pathname === "/v1/outbox") { json(res, 200, { items: store.outbox(queryLimit(url)) }, origin, allowedOrigins); return; }
   if (req.method === "GET" && url.pathname === "/v1/sync") { const page = store.sync(url.searchParams.get("cursor") ?? undefined, queryLimit(url)); json(res, 200, { ...page, events: page.events.map((item) => wireEvent(item, store)) }, origin, allowedOrigins); return; }
@@ -151,7 +162,16 @@ function startDeliveryWorker(server: Server, store: NodeStore): void {
 export function createNodeServer(options: NodeServerOptions = {}): Server {
   const store = options.store ?? new NodeStore({ dbPath: options.dbPath, nodeId: options.nodeId, peers: options.peers });
   const allowedOrigins = options.allowedOrigins ?? (process.env.LINKO_ALLOWED_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? ["http://127.0.0.1:4173", "http://localhost:4173"]);
-  const server = createServer((req, res) => { route(req, res, store, allowedOrigins, false).catch((error: unknown) => errorResponse(res, error, typeof req.headers.origin === "string" ? req.headers.origin : undefined, allowedOrigins)); });
+  const liveHub = options.websocket === false ? undefined : new LiveHub({ allowedOrigins, hostAllowed: localHostAllowed, nodeInfo: () => ({ nodeId: store.nodeId, logEpoch: store.logEpoch }) });
+  const server = createServer((req, res) => { route(req, res, store, allowedOrigins, false, liveHub).catch((error: unknown) => errorResponse(res, error, typeof req.headers.origin === "string" ? req.headers.origin : undefined, allowedOrigins)); });
+  liveHub?.attach(server);
+  const unsubscribe = liveHub ? store.onCommit(() => liveHub.notify()) : () => {};
+  const close = server.close.bind(server);
+  server.close = (callback) => {
+    unsubscribe();
+    liveHub?.close();
+    return close(callback);
+  };
   startDeliveryWorker(server, store);
   server.on("close", () => { if (!options.store) store.close(); });
   return server;

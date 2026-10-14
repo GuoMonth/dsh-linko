@@ -34,6 +34,8 @@ import {
   type NodeInfo,
 } from './api.js';
 import { fixtureEnvelopes } from './fixtures.js';
+import { LiveHints } from './live.js';
+import { SyncQueue } from './sync.js';
 import {
   buildHumanEnvelope,
   currentDecision,
@@ -120,7 +122,6 @@ interface State {
   clientId: string;
   pollDelay: number;
   pollTimer: number | undefined;
-  polling: boolean;
   flushing: boolean;
   bodyCache: BodyCache;
   bodyLoading: Set<string>;
@@ -198,7 +199,6 @@ const state: State = {
   clientId: deviceId,
   pollDelay: POLL_HEALTHY_MS,
   pollTimer: undefined,
-  polling: false,
   flushing: false,
   bodyCache: readBodyCache(),
   bodyLoading: new Set(),
@@ -313,25 +313,45 @@ function trimOutbox(): void {
 
 function scheduleNextPoll(): void {
   if (state.pollTimer !== undefined) window.clearTimeout(state.pollTimer);
+  if (!pageActive) return;
   state.pollTimer = window.setTimeout(() => {
     void poll();
   }, state.pollDelay);
 }
 
-/**
- * One poll cycle. A visible document polls on a steady cadence; a hidden one
- * backs off, so a background tab does not hammer the node. Errors back off
- * exponentially and are surfaced rather than retried invisibly.
- */
-async function poll(): Promise<void> {
-  if (state.polling) return;
-  state.polling = true;
+let pageActive = true;
+let recoveryGeneration = 0;
+
+function beginRecovery(): void {
+  recoveryGeneration += 1;
+  state.initialSyncComplete = false;
+}
+
+const syncQueue = new SyncQueue(reconcile, () => {
+  beginRecovery();
+  state.syncError = '无法同步本机节点';
+  render();
+});
+const live = new LiveHints({
+  base: state.config.base,
+  onReady: () => { beginRecovery(); void poll(); },
+  onDisconnect: () => { beginRecovery(); void poll(); },
+  onHint: () => { void poll(); },
+});
+
+// Polling, socket wakeups and action-triggered recovery share this sole entry.
+function poll(): Promise<void> { return syncQueue.request(); }
+
+/** REST reconciliation continues every 4 s even when live hints work. */
+async function reconcile(): Promise<void> {
   try {
     const node = await fetchNode(state.config.base);
+    if (!pageActive) return;
     if (node === null) {
       // A reconnect starts a fresh historical pass. Events pulled while the
       // tab was offline must not be mistaken for live arrivals.
-      state.initialSyncComplete = false;
+      beginRecovery();
+      live.updateNode(null);
       state.connection = 'offline';
       state.node = null;
       state.source = state.source === 'node' ? 'offline' : 'preview';
@@ -350,25 +370,26 @@ async function poll(): Promise<void> {
         state.selectedId = null;
         state.initialSyncComplete = false;
       }
-      if (nodeChanged) state.initialSyncComplete = false;
-      if (state.connection === 'offline') state.initialSyncComplete = false;
+      if (nodeChanged || state.connection === 'offline') beginRecovery();
       state.node = node;
       state.connection = 'online';
       state.pollDelay = POLL_HEALTHY_MS;
+      live.updateNode(node);
       await syncOnce();
+      if (!pageActive) return;
       await flushOutbox();
       selectDefaultIfUnset();
     }
   } finally {
-    state.polling = false;
     render();
     scheduleNextPoll();
   }
 }
 
 async function syncOnce(): Promise<void> {
-  let outcome = await fetchEnvelopes(state.config.base, state.cursor);
   let baselineComplete = state.initialSyncComplete;
+  const generation = recoveryGeneration;
+  let outcome = await fetchEnvelopes(state.config.base, state.cursor);
 
   state.syncError = null;
   state.source = 'node';
@@ -382,6 +403,7 @@ async function syncOnce(): Promise<void> {
   // reconnect or cursor reset leaves baselineComplete false, so every page in
   // that recovery pass is silent even when it contains unseen event ids.
   while (true) {
+    if (!pageActive) return;
     // A reset can arrive between two pages while the node rotates its log
     // epoch. Restart the complete drain once, then fail closed if the node
     // keeps returning a reset instruction.
@@ -409,6 +431,7 @@ async function syncOnce(): Promise<void> {
     }
 
     if (!outcome.ok) {
+      beginRecovery();
       state.syncError = describeFailure(outcome);
       state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
       return;
@@ -428,7 +451,8 @@ async function syncOnce(): Promise<void> {
         notifiedIds.add(envelope.id);
         return true;
       });
-      pendingNotifications.push(...uniqueFresh);
+      // Only three desktop notifications can be emitted; retain no larger queue.
+      pendingNotifications.push(...uniqueFresh.slice(0, 3 - pendingNotifications.length));
     }
 
     if (!page.hasMore) break;
@@ -444,6 +468,7 @@ async function syncOnce(): Promise<void> {
     outcome = await fetchEnvelopes(state.config.base, page.cursor);
   }
 
+  if (generation !== recoveryGeneration) return;
   state.initialSyncComplete = true;
   // Notify only after the complete page drain succeeds. If a later page
   // requests a cursor reset, all earlier pages are historical recovery too.
@@ -569,7 +594,7 @@ async function submitDecision(envelope: Envelope, intent: DecisionIntent): Promi
   announce(intent === 'approve' ? '节点已接受批准' : '节点已接受拒绝');
   render();
   // Pull the node's own facts so the action dimension reflects the receipt.
-  await syncOnce();
+  await poll();
   render();
 }
 
@@ -1133,10 +1158,29 @@ window.addEventListener('keydown', (event) => {
 
 document.addEventListener('visibilitychange', () => {
   // Coming back to the tab should not wait out a long backoff.
-  if (!document.hidden) {
+  if (!document.hidden && pageActive) {
     state.pollDelay = POLL_HEALTHY_MS;
     void poll();
   }
+});
+
+window.addEventListener('pagehide', () => {
+  pageActive = false;
+  beginRecovery();
+  live.pause();
+  syncQueue.pause();
+  if (state.pollTimer !== undefined) window.clearTimeout(state.pollTimer);
+  state.pollTimer = undefined;
+});
+
+window.addEventListener('pageshow', () => {
+  if (pageActive) return;
+  pageActive = true;
+  beginRecovery();
+  syncQueue.resume();
+  live.resume();
+  state.pollDelay = POLL_HEALTHY_MS;
+  void poll();
 });
 
 /* ------------------------------------------------------------------ *

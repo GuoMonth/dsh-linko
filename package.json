@@ -14,6 +14,7 @@
     "node:build": "tsc -p packages/node/tsconfig.json",
     "node:start": "pnpm node:build && node packages/node/dist/cli.js",
     "node:smoke": "pnpm node:build && node packages/node/smoke.mjs",
+    "node:live-smoke": "pnpm node:build && node packages/node/live-smoke.mjs",
     "node:outbox-smoke": "pnpm node:build && node packages/node/outbox-smoke.mjs",
     "node:recovery-smoke": "pnpm node:build && node packages/node/restart-recovery-smoke.mjs",
     "bridge:build": "tsc -p packages/bridge/tsconfig.json",
@@ -24,6 +25,8 @@
     "web:serve": "node packages/web/scripts/serve.mjs",
     "web:preview": "pnpm --filter @dsh-linko/web preview",
     "web:smoke": "pnpm --filter @dsh-linko/web smoke",
+    "web:live-smoke": "pnpm --filter @dsh-linko/web live:smoke",
+    "web:live-integration": "pnpm node:build && pnpm web:build && pnpm --filter @dsh-linko/web live:integration",
     "ledger:smoke": "pnpm node:build && node packages/node/ledger-smoke.mjs",
     "group:build": "tsc -p packages/group/tsconfig.json",
     "group:typecheck": "tsc -p packages/group/tsconfig.json --noEmit",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "24.8.0",
+    "@types/ws": "8.18.2",
     "typescript": "7.0.2"
   }
 }

@@ -112,6 +112,18 @@ inventing a field-by-field merge here would put this client in the position of
 deciding facts it does not own. A `409` cursor reset is treated as an instruction
 — drop the cursor and drain from the start — not as an error to show the user.
 
+When `/v1/node` advertises `capabilities.websocketHints: true`, the browser opens
+one `ws:`/`wss:` connection to the same API base at `/v1/live`. It sends only the
+`v1` hello, accepts the bounded ready/hint/ping/pong vocabulary, and uses every
+hint as a request for the existing REST sync. Hints are coalesced for 100 ms and
+never carry a cursor or payload. The handshake timeout is 5 s, heartbeat is sent
+every 15 s with a 10 s pong watchdog, and reconnect uses equal jitter from 500 ms
+to a 30 s cap. Frames are capped at 4,096 characters and buffered sends at 4 KiB.
+Socket loss closes the notification baseline, so catch-up does not replay history;
+periodic REST reconciliation remains active. A missing capability or WebSocket
+support falls back to REST polling. `pagehide` closes the socket and pauses work;
+`pageshow` resumes with a bounded REST catch-up.
+
 ## Fogg behaviour model
 
 - **One prompt at a time.** One envelope is focused, the decision panel offers

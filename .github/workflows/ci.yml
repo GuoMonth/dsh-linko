@@ -26,8 +26,11 @@ jobs:
       - run: pnpm smoke
       - run: pnpm group:smoke
       - run: pnpm node:outbox-smoke
+      - run: pnpm node:live-smoke
       - run: pnpm node:recovery-smoke
       - run: pnpm ledger:smoke
       - run: pnpm bridge:contract:smoke
       - run: pnpm web:smoke
+      - run: pnpm web:live-smoke
+      - run: pnpm web:live-integration
       - run: pnpm contract:smoke

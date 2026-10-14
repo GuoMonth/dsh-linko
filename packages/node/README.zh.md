@@ -15,6 +15,10 @@ pnpm contract:smoke
 
 本地 API 默认监听 `127.0.0.1:8787`。可用 `LINKO_PORT`、`LINKO_DB`、`LINKO_NODE_ID` 和 `LINKO_ALLOWED_ORIGINS` 调整本地设置。
 
+## 本地实时提示
+
+本地节点默认提供 `ws://127.0.0.1:8787/v1/live`。客户端必须来自允许的 Origin，发送 `{ "type": "hello", "protocolVersion": "v1" }`，并等待 `ready`。节点随后在本地状态可能变化时发送小型 `hint` 消息。提示不包含消息正文，不拥有队列或游标，也可能丢失或重复；客户端通过 `GET /v1/sync` 恢复。配对 Peer 的 WSS 投递仍是后续传输阶段。
+
 ## 运行两个配对节点
 
 为每个节点生成证书（真实部署请使用适合部署名称和 IP 的 CA；下面命令用于本地双节点检查）：
