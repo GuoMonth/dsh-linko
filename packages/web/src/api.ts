@@ -73,6 +73,16 @@ export interface ReceiptResult {
   readonly state: string;
 }
 
+export interface BodyResult {
+  readonly objectId: string;
+  readonly body: string;
+  readonly contentType: string;
+}
+
+export interface EnvelopeDetailResult {
+  readonly envelope: Envelope | null;
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -216,6 +226,50 @@ export async function fetchPeers(base: string): Promise<PeerDirectory> {
     return { peers: [], available: false };
   }
   return { peers: parsePeers(outcome.value), available: true };
+}
+
+/** Fetch a body only after the reader asks for it. The object id remains an
+ * inert reference until this function is called; response content is always
+ * returned as text and is never treated as markup. */
+export async function fetchBody(base: string, objectId: string): Promise<ApiOutcome<BodyResult>> {
+  if (objectId.length === 0 || objectId.length > 512 || /[^a-zA-Z0-9:_./-]/.test(objectId)) {
+    return { ok: false, code: 'invalid-object-id', detail: '', status: null };
+  }
+  const outcome = await requestJson(base, `/v1/objects/${encodeURIComponent(objectId)}`, {
+    headers: { accept: 'application/json, text/plain' },
+  });
+  if (!outcome.ok) return outcome;
+  const record = typeof outcome.value === 'object' && outcome.value !== null
+    ? outcome.value as Record<string, unknown>
+    : {};
+  const body = typeof record.body === 'string'
+    ? record.body
+    : typeof record.content === 'string'
+      ? record.content
+      : typeof record.inlineBody === 'string' ? record.inlineBody : null;
+  if (body === null || body.length > 400_000) {
+    return { ok: false, code: body === null ? 'malformed-body' : 'body-too-large', detail: '', status: null };
+  }
+  return {
+    ok: true,
+    value: {
+      objectId,
+      body,
+      contentType: typeof record.contentType === 'string' && record.contentType.length <= 120 ? record.contentType : 'text/plain',
+    },
+  };
+}
+
+/** Pull one envelope detail stream item after a notification or reconnect.
+ * REST detail remains the recovery path if a future hint stream drops. */
+export async function fetchEnvelopeDetail(base: string, eventId: string): Promise<ApiOutcome<EnvelopeDetailResult>> {
+  if (eventId.length === 0 || eventId.length > 512) return { ok: false, code: 'invalid-event-id', detail: '', status: null };
+  const outcome = await requestJson(base, `/v1/inbox/${encodeURIComponent(eventId)}`, {
+    headers: { accept: 'application/json' },
+  });
+  if (!outcome.ok) return outcome;
+  const parsed = parseEnvelopeBatch({ events: [outcome.value] });
+  return { ok: true, value: { envelope: parsed.envelopes[0] ?? null } };
 }
 
 /**

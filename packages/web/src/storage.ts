@@ -22,7 +22,32 @@ export const KEYS = {
   decisions: 'linko.decisions',
   dismissed: 'linko.dismissed',
   theme: 'linko.theme',
+  bodyCache: 'linko.bodyCache',
+  notifications: 'linko.notifications',
 } as const;
+
+/** Small, bounded cache for bodies fetched on demand. It is presentation
+ * convenience only; the immutable envelope remains the source of truth. */
+export type BodyCache = Record<string, string>;
+
+export function readBodyCache(): BodyCache {
+  const value = readJson<unknown>(KEYS.bodyCache, {});
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const cache: BodyCache = {};
+  for (const [key, body] of Object.entries(value)) {
+    if (typeof body === 'string' && body.length <= 400_000) cache[key] = body;
+  }
+  return cache;
+}
+
+export function cacheBody(objectId: string, body: string): BodyCache {
+  const cache = readBodyCache();
+  cache[objectId] = body.slice(0, 400_000);
+  const entries = Object.entries(cache).slice(-24);
+  const bounded = Object.fromEntries(entries);
+  writeJson(KEYS.bodyCache, bounded);
+  return bounded;
+}
 
 export function readString(key: string): string | null {
   try {

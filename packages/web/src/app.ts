@@ -25,6 +25,7 @@ import {
   configFromEnvironment,
   decisionStateFor,
   fetchEnvelopes,
+  fetchBody,
   fetchNode,
   fetchPeers,
   postReceipt,
@@ -50,7 +51,7 @@ import {
   type Peer,
   type SendRecord,
 } from './model.js';
-import { KEYS, readJson, readString, remove, writeJson, writeString } from './storage.js';
+import { KEYS, cacheBody, readBodyCache, readJson, readString, remove, writeJson, writeString, type BodyCache } from './storage.js';
 import {
   banner,
   composeView,
@@ -63,6 +64,7 @@ import {
   outboxView,
   progressBar,
   themeButton,
+  notificationButton,
   type ComposeHandlers,
   type DetailHandlers,
 } from './render.js';
@@ -104,6 +106,10 @@ interface State {
   pollTimer: number | undefined;
   polling: boolean;
   flushing: boolean;
+  bodyCache: BodyCache;
+  bodyLoading: Set<string>;
+  bodyErrors: Record<string, string>;
+  notificationStatus: 'unsupported' | 'default' | 'granted' | 'denied';
 }
 
 const EMPTY_DRAFT: ComposeDraft = {
@@ -174,6 +180,10 @@ const state: State = {
   pollTimer: undefined,
   polling: false,
   flushing: false,
+  bodyCache: readBodyCache(),
+  bodyLoading: new Set(),
+  bodyErrors: {},
+  notificationStatus: typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
 };
 
 const dom = {
@@ -200,6 +210,51 @@ function persist(): void {
   writeJson(KEYS.decisions, state.decisions);
   writeJson(KEYS.outbox, state.outbox);
   writeJson(KEYS.dismissed, [...state.dismissed]);
+}
+
+function refreshNotificationStatus(): void {
+  state.notificationStatus = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+}
+
+async function enableNotifications(): Promise<void> {
+  if (typeof Notification === 'undefined') return;
+  try {
+    state.notificationStatus = await Notification.requestPermission();
+  } catch {
+    refreshNotificationStatus();
+  }
+  render();
+}
+
+function notifyNewEnvelopes(envelopes: readonly Envelope[]): void {
+  if (state.notificationStatus !== 'granted' || typeof Notification === 'undefined') return;
+  for (const envelope of envelopes.slice(0, 3)) {
+    try {
+      new Notification(envelope.cover.title, {
+        body: envelope.cover.preview || '新的 Linko 信封',
+        tag: `linko:${envelope.id}`,
+      });
+    } catch {
+      // Desktop notifications are a convenience; in-app rendering remains.
+    }
+  }
+}
+
+async function loadBody(envelope: Envelope): Promise<void> {
+  const objectId = envelope.bodyObjectId;
+  if (objectId === null || state.bodyLoading.has(objectId)) return;
+  if (state.bodyCache[objectId] !== undefined) {
+    render();
+    return;
+  }
+  state.bodyLoading.add(objectId);
+  delete state.bodyErrors[objectId];
+  render();
+  const outcome = await fetchBody(state.config.base, objectId);
+  state.bodyLoading.delete(objectId);
+  if (!outcome.ok) state.bodyErrors[objectId] = describeFailure(outcome);
+  else state.bodyCache = cacheBody(objectId, outcome.value.body);
+  render();
 }
 
 function persistCursor(cursor: string | null): void {
@@ -288,8 +343,11 @@ async function syncOnce(): Promise<void> {
   state.syncError = null;
   state.source = 'node';
   state.skipped = outcome.value.skipped;
+  const known = new Set(state.envelopes.map((envelope) => envelope.id));
+  const fresh = outcome.value.envelopes.filter((envelope) => !known.has(envelope.id));
   state.envelopes = mergeEnvelopes(state.envelopes, outcome.value.envelopes);
   persistCursor(outcome.value.cursor);
+  notifyNewEnvelopes(fresh);
 }
 
 /**
@@ -613,6 +671,12 @@ function detailHandlersFor(envelope: Envelope): DetailHandlers {
       state.draft = { ...EMPTY_DRAFT, peerId: state.draft.peerId, title: `回复：${envelope.cover.title}`, intent: 'inform' };
       render();
     },
+    onLoadBody: () => {
+      void loadBody(envelope);
+    },
+    onRetryBody: () => {
+      void loadBody(envelope);
+    },
   };
 }
 
@@ -692,6 +756,9 @@ function renderMasthead(now: number): void {
         state.view = 'inbox';
         render();
       },
+    }),
+    notificationButton(state.notificationStatus, () => {
+      void enableNotifications();
     }),
     themeButton(state.theme, () => {
       state.theme = state.theme === 'dark' ? 'light' : 'dark';
@@ -814,6 +881,9 @@ function renderDetail(now: number): void {
         pendingConfirm: state.pendingConfirm,
         parentTitle: parent === null ? null : parent.cover.title,
         now,
+        bodyText: envelope.bodyObjectId === null ? null : state.bodyCache[envelope.bodyObjectId] ?? null,
+        bodyLoading: envelope.bodyObjectId !== null && state.bodyLoading.has(envelope.bodyObjectId),
+        bodyError: envelope.bodyObjectId === null ? null : state.bodyErrors[envelope.bodyObjectId] ?? null,
       },
       detailHandlersFor(envelope),
     ),

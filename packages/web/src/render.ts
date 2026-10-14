@@ -267,6 +267,9 @@ export interface DetailModel {
   readonly pendingConfirm: 'approve' | 'reject' | null;
   readonly parentTitle: string | null;
   readonly now: number;
+  readonly bodyText?: string | null;
+  readonly bodyLoading?: boolean;
+  readonly bodyError?: string | null;
 }
 
 export interface DetailHandlers {
@@ -279,6 +282,8 @@ export interface DetailHandlers {
   readonly onMarkRead: () => void;
   readonly onAcknowledge: () => void;
   readonly onReply: () => void;
+  readonly onLoadBody?: () => void;
+  readonly onRetryBody?: () => void;
 }
 
 function inertReference(label: string, value: string, explanation: string): HTMLElement {
@@ -553,13 +558,24 @@ export function detailView(model: DetailModel, handlers: DetailHandlers): HTMLEl
     ),
   );
 
+  const remoteBody = envelope.bodyObjectId === null
+    ? null
+    : model.bodyLoading
+      ? h('p', { class: 'row__value--quote', text: '正在按需抓取正文… Loading body on demand…' })
+      : model.bodyText !== undefined && model.bodyText !== null
+        ? h('div', { class: 'rows' }, h('div', { class: 'row' }, h('div', { class: 'row__label', text: '正文 · body' }), h('div', { class: 'row__value row__value--quote', text: model.bodyText })))
+        : h('div', { class: 'body-fetch' },
+          h('p', { class: 'row__value--quote', text: model.bodyError ?? '正文尚未抓取。封面可先离线阅读。' }),
+          handlers.onLoadBody === undefined ? null : h('button', { class: 'btn btn--small', type: 'button', text: model.bodyError ? '重试正文' : '展开正文', onclick: model.bodyError ? handlers.onRetryBody : handlers.onLoadBody }),
+        );
+
   const content = h(
     'section',
     { class: 'section' },
     h('h3', { class: 'section__title' }, bi('内容与引用', 'Content and references')),
-    envelope.inlineBody === null
-      ? h('p', { class: 'row__value--quote', text: '没有内联正文。此处单独显示封面，这正是封面与正文分离的意义。' })
-      : h('div', { class: 'rows' }, h('div', { class: 'row' }, h('div', { class: 'row__label', text: '正文' }), h('div', { class: 'row__value row__value--quote', text: envelope.inlineBody }))),
+    envelope.inlineBody !== null
+      ? h('div', { class: 'rows' }, h('div', { class: 'row' }, h('div', { class: 'row__label', text: '正文' }), h('div', { class: 'row__value row__value--quote', text: envelope.inlineBody })))
+      : remoteBody ?? h('p', { class: 'row__value--quote', text: '没有正文对象。此处单独显示封面。' }),
     envelope.parents.length === 0
       ? null
       : inertReference('父事件 · parent', envelope.parents[0]!, '仅作为引用显示，不抓取、不执行'),
@@ -929,5 +945,17 @@ export function themeButton(theme: 'light' | 'dark', onToggle: () => void): HTML
     title: '切换主题 / toggle theme',
     'aria-label': `切换到${theme === 'dark' ? '亮' : '暗'}色主题`,
     onclick: onToggle,
+  });
+}
+
+export function notificationButton(status: 'unsupported' | 'default' | 'granted' | 'denied', onEnable: () => void): HTMLElement {
+  const label = status === 'granted' ? '通知已开' : status === 'denied' ? '通知被拒' : status === 'unsupported' ? '无桌面通知' : '开启通知';
+  return h('button', {
+    class: 'btn btn--small',
+    type: 'button',
+    text: label,
+    title: '只在本机节点出现新信封时通知，不改变消息状态',
+    disabled: status === 'unsupported' || status === 'denied' || status === 'granted',
+    onclick: onEnable,
   });
 }
