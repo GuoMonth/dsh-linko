@@ -26,6 +26,8 @@ A live session supports prompt bidirectional exchange while keeping crash recove
 
 The current node implements paired HTTPS delivery, certificate pinning, bearer authentication, a SQLite outbox, and REST recovery. It does not yet implement the WSS live session. This decision selects the next transport direction; it is not release evidence for WSS, discovery, signatures, E2EE, group delivery, or capacity.
 
+The node does expose a separate loopback-only `ws://.../v1/live` channel for the local browser UI. It carries bounded invalidation hints only; it has no peer authority, message body, queue, or recovery cursor, and the UI always returns to REST sync. This local wakeup is an implemented presentation aid, not the paired-peer WSS session selected by this record.
+
 The local browser, CLI, and DSH companion bridge continue to use the local API. A peer-session decision does not require those clients to own peer sockets or discovery.
 
 ## Consequences and acceptance
