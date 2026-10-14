@@ -15,7 +15,7 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 - local-first agent collaboration
 - LAN agent messaging
 - explainable collaborator discovery
-- subjective signed capability claims
+- subjective, evidence-backed capability claims（主观、带证据的能力认知）
 - message envelope protocol
 - REST cursor synchronization
 - WebSocket wake-up hints

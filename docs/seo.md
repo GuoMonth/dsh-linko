@@ -15,7 +15,7 @@ Open-source, local-first envelope messaging for DeepSeek Harness: a TypeScript n
 - local-first agent collaboration
 - LAN agent messaging
 - explainable collaborator discovery
-- subjective signed capability claims
+- subjective, evidence-backed capability claims
 - message envelope protocol
 - REST cursor synchronization
 - WebSocket wake-up hints

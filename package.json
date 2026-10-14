@@ -15,6 +15,7 @@
     "node:start": "pnpm node:build && node packages/node/dist/cli.js",
     "node:smoke": "pnpm node:build && node packages/node/smoke.mjs",
     "node:outbox-smoke": "pnpm node:build && node packages/node/outbox-smoke.mjs",
+    "node:recovery-smoke": "pnpm node:build && node packages/node/restart-recovery-smoke.mjs",
     "bridge:build": "tsc -p packages/bridge/tsconfig.json",
     "bridge:contract:smoke": "pnpm node:build && pnpm bridge:build && node packages/bridge/contract-smoke.mjs",
     "contract:smoke": "pnpm web:build && pnpm node:build && node packages/node/contract-smoke.mjs",
@@ -22,7 +23,8 @@
     "web:build": "node packages/web/scripts/build.mjs",
     "web:serve": "node packages/web/scripts/serve.mjs",
     "web:preview": "pnpm --filter @dsh-linko/web preview",
-    "web:smoke": "pnpm --filter @dsh-linko/web smoke"
+    "web:smoke": "pnpm --filter @dsh-linko/web smoke",
+    "ledger:smoke": "pnpm node:build && node packages/node/ledger-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "24.8.0",

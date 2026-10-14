@@ -26,18 +26,18 @@ Status: MVP complete; integration hardening continues.
 - Provide a human envelope-cover preview, compose/reply flow, and an offline fixture.
 - Exercise duplicate delivery, cursor pull, approval expiry, hostile local requests, and the node-to-UI contract.
 
-Exit evidence: `pnpm contract:smoke`, `pnpm smoke`, and `pnpm web:smoke` pass; the real node response passes through the UI parser and an approval does not duplicate the event. A committed kill-and-restart trace remains open.
+Exit evidence: `pnpm contract:smoke`, `pnpm smoke`, and `pnpm web:smoke` pass; the real node response passes through the UI parser and an approval does not duplicate the event. Process recovery is tracked and evidenced in Phase 2.
 
 ## Phase 2 — Paired two-node transport
 
-Status: paired HTTPS baseline implemented; recovery fixture remains open.
+Status: paired HTTPS and process-recovery baseline implemented; the adversarial network matrix remains open.
 
 - Add explicit pairing and authenticated peer sessions.
 - Make REST pull the recovery contract; add WSS only as a wake-up hint.
 - Add bounded queues, retries, backoff, log epochs, and reset recovery.
 - Test ordinary TCP, IP changes, sleeping nodes, firewalls, half-open sockets, and missing mDNS.
 
-Current evidence: a real self-signed HTTPS push reaches the second node with one inbox item and a confirmed outbox. Exit evidence still requires a committed forced-loss/restart fixture and pull convergence test.
+Current evidence: a real self-signed HTTPS push reaches the second node with one inbox item and a confirmed outbox. `pnpm node:recovery-smoke` now commits a forced-loss/restart trace: the sender's outbox is retried after a kill, the receiver resumes a cursor after restart, and both nodes converge on one event. The fixture is part of CI.
 
 ## Phase 3 — Envelope UI and Agent policy
 

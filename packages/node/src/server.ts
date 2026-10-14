@@ -67,6 +67,11 @@ async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore
     const peer = store.peerForSecret(authorization.slice("Bearer ".length));
     const body = await readBody(req); const input = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
     const result = store.receivePeer(input.envelope ?? input.event ?? body, input.attemptId, peer.peerId);
+    // The recovery fixture sets this process-local delay to stop immediately
+    // after durable receipt and exercise the sender's crash boundary. It is
+    // unset for normal nodes and has no protocol or production behavior.
+    const testAckDelay = Number(process.env.LINKO_TEST_PEER_ACK_DELAY_MS ?? 0);
+    if (Number.isInteger(testAckDelay) && testAckDelay > 0) await new Promise((resolve) => setTimeout(resolve, testAckDelay));
     json(res, result.duplicate ? 200 : 201, { eventId: result.eventId, delivery: "confirmed", duplicate: result.duplicate, event: wireEvent(result.item, store) });
     return;
   }
