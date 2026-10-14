@@ -19,7 +19,7 @@ LAN messaging and approval panels are useful building blocks. Linko adds the par
 
 ## Project status
 
-The MVP runs a SQLite-backed node and a human-first envelope inbox. It supports an explicit two-node HTTPS pairing profile with a durable outbox, pinned certificates, bearer authentication, retry-safe command IDs, and REST recovery. WebSocket hints, message signatures, and E2EE remain later milestones; this is not a 20,000-node capacity claim.
+The MVP runs a SQLite-backed node and a human-first envelope inbox. It supports an explicit two-node HTTPS pairing profile with a durable outbox, pinned certificates, bearer authentication, retry-safe command IDs, and REST recovery. The replaceable TypeScript DSH companion bridge now provides `ask`, `inbox`, `inspect`, `draft`, `approve`, and `reply` adapters over the local API. WebSocket hints, message signatures, and E2EE remain later milestones; this is not a 20,000-node capacity claim.
 
 - Product scope: [English](docs/specs/0001-product-scope.md) · [中文](docs/specs/0001-product-scope.zh.md)
 - Architecture: [English](docs/architecture.md) · [中文](docs/architecture.zh.md)
@@ -28,6 +28,7 @@ The MVP runs a SQLite-backed node and a human-first envelope inbox. It supports 
 - Roadmap: [English](ROADMAP.md) · [中文](ROADMAP.zh.md)
 - Decisions: [English](docs/decisions/README.md) · [中文](docs/decisions/README.zh.md)
 - Local node MVP: [English](packages/node/README.md) · [中文](packages/node/README.zh.md)
+- DSH companion bridge: [English](packages/bridge/README.md) · [中文](packages/bridge/README.zh.md)
 - Envelope inbox UI: [English](packages/web/DESIGN.md) · [中文](packages/web/DESIGN.zh.md)
 
 ## Design direction

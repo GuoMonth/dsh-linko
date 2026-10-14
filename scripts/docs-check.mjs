@@ -19,6 +19,7 @@ const paired = [
   'docs/review.md',
   'packages/web/DESIGN.md',
   'packages/node/README.md',
+  'packages/bridge/README.md',
   'docs/decisions/README.md',
   'docs/decisions/0001-clean-room-reference.md',
   'docs/decisions/0002-local-first-cognitive-ledger.md',

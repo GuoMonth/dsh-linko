@@ -19,7 +19,7 @@ Linko 已进入可运行的早期 MVP。本仓库仍采用规格驱动：运行�
 
 ## 项目状态
 
-MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明确配对的双节点 HTTPS 配置档：持久出站队列、证书指纹固定、Bearer 认证、可重试 command ID 和 REST 恢复都已接通。WebSocket 提示、消息签名和 E2EE 仍是后续里程碑；这不代表已经支持 2 万节点容量。
+MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明确配对的双节点 HTTPS 配置档：持久出站队列、证书指纹固定、Bearer 认证、可重试 command ID 和 REST 恢复都已接通。可替换的 TypeScript DSH companion bridge 已通过本地 API 提供 `ask`、`inbox`、`inspect`、`draft`、`approve` 和 `reply` 适配器。WebSocket 提示、消息签名和 E2EE 仍是后续里程碑；这不代表已经支持 2 万节点容量。
 
 - 产品范围：[English](docs/specs/0001-product-scope.md) · [中文](docs/specs/0001-product-scope.zh.md)
 - 架构：[English](docs/architecture.md) · [中文](docs/architecture.zh.md)
@@ -28,6 +28,7 @@ MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明�
 - Roadmap：[English](ROADMAP.md) · [中文](ROADMAP.zh.md)
 - 决策记录：[English](docs/decisions/README.md) · [中文](docs/decisions/README.zh.md)
 - 本地节点 MVP：[English](packages/node/README.md) · [中文](packages/node/README.zh.md)
+- DSH companion bridge：[English](packages/bridge/README.md) · [中文](packages/bridge/README.zh.md)
 - 信封收件箱 UI：[English](packages/web/DESIGN.md) · [中文](packages/web/DESIGN.zh.md)
 
 ## 设计方向

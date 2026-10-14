@@ -83,13 +83,14 @@ Exit evidence: a network budget report covers peer degree, multicast, bytes, dup
 
 ## Phase 6 — DeepSeek Harness plugin
 
-Planned.
+Status: replaceable local companion bridge contract complete; host-specific Harness integration remains out of scope.
 
-- Package the local node as a DSH plugin with host and client faces.
-- Expose ask, inbox, inspect, draft, approve, and scoped-detail tools using the public envelope and sync contracts.
-- Keep network side effects and policy decisions visible through normal Harness composition.
+- Package a dependency-free TypeScript companion bridge with explicit host and local-client faces; it does not copy or depend on DeepSeek Harness source.
+- Expose `ask`, `inbox`, `inspect`, `draft`, `approve`, and `reply` through the existing loopback REST contract, plus a JSON CLI adapter.
+- Keep network side effects and policy decisions visible through host composition; approval records a receipt and does not execute work.
+- Keep non-loopback APIs, peer transport, discovery, signatures, E2EE, LLM prompting, and host scheduling outside this bridge.
 
-Exit evidence: the plugin can be replaced by another client without changing the wire contract.
+Exit evidence: `pnpm bridge:contract:smoke` runs an Agent request through Linko, queries the inbox, inspects it, creates a reply draft, records approval, commits a reply, and checks the CLI adapter. The bridge can be replaced by another client without changing the Linko wire contract.
 
 ## Parking lot
 

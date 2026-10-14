@@ -1,0 +1,15 @@
+{
+  "name": "@dsh-linko/bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A replaceable local TypeScript companion bridge for Linko and DSH-style hosts.",
+  "license": "MIT",
+  "bin": {
+    "linko-dsh": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

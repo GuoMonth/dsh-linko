@@ -83,13 +83,14 @@
 
 ## 阶段 6——DeepSeek Harness 插件
 
-计划中。
+状态：可替换的本地 companion bridge 契约已完成；特定 Host 的 Harness 集成不在本阶段范围内。
 
-- 将本地节点打包为带 Host 与 Client 两面的 DSH 插件。
-- 使用公开信封和同步契约暴露发起请求、检查收件箱、查看详情、起草、审批和有范围读取。
-- 通过 Harness 的正常组合机制展示网络副作用和策略决策。
+- 提供无依赖的 TypeScript companion bridge，明确 Host 与本地 Client 两面；不复制或依赖 DeepSeek Harness 源码。
+- 基于已有 loopback REST 契约暴露 `ask`、`inbox`、`inspect`、`draft`、`approve` 和 `reply`，并提供 JSON CLI 适配器。
+- 通过 Host 组合展示网络副作用和策略决策；批准只记录回执，不执行工作。
+- 非 loopback API、Peer 传输、发现、签名、E2EE、LLM 提示词和 Host 调度都留在此 Bridge 之外。
 
-退出证据：替换成其他客户端时无需修改线协议。
+退出证据：`pnpm bridge:contract:smoke` 将 Agent 请求送入 Linko，查询收件箱、查看详情、生成回复草稿、记录批准、提交回复并检查 CLI 适配器。替换为其他 Client 时无需修改 Linko 线协议。
 
 ## 停车场
 
