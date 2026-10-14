@@ -57,6 +57,6 @@ LINKO_PORT=8787 LINKO_PEER_PORT=8788 pnpm node:start
 
 `GET /v1/sync` 返回扁平 UI 信封。其不透明游标覆盖到达、回执/动作变化以及 outbox 变化，并限定在 SQLite 日志 epoch 内。`POST /v1/receipts` 接受 `presented`、`read`、`acknowledged`、`approved` 或 `rejected`；批准会校验请求的动作和过期时间，本里程碑中 approved/rejected 决策不可逆。不可变信封不能携带 `facts` 声明；节点从自己的持久化行投影这些事实。
 
-WebSocket 提示、签名和消息层 E2EE 不在本 MVP 范围内。HTTPS 配对认证显式配置的 Peer 通道，不能回退为明文或 TOFU。
+已批准的 [2026 年传输方向](../../docs/decisions/0010-wss-live-session-and-recovery.zh.md) 选择 WSS 作为在线实时会话，REST 游标同步与 SQLite/outbox 继续负责规范恢复。WSS 在线实时会话、签名和消息层 E2EE 不在本 MVP 范围内。HTTPS 配对认证显式配置的 Peer 通道，不能回退为明文或 TOFU。
 
 `pnpm node:recovery-smoke` 会用临时 SQLite 数据库和自签名 HTTPS Peer 启动两个真实节点进程。它在接收节点持久化事件、尚未返回确认时强制结束发送节点，随后重启并检查 outbox 重试以及对端仍只有一条事件；同时重启接收节点，在一次已读变化后从原游标继续拉取，并检查两个节点收敛到同一组事件。fixture 只使用默认未设置的 `LINKO_TEST_PEER_ACK_DELAY_MS`，用于把强制退出边界稳定地放在对端持久化之后。

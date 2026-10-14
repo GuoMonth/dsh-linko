@@ -2,13 +2,13 @@
 
 [English](0006-lan-discovery-and-transport-profile.md) | 中文
 
-状态：设计阶段已接受。
+状态：设计阶段已接受；传输定位已由 [ADR 0010](0010-wss-live-session-and-recovery.zh.md) 取代。
 
 ## 决策
 
-基线是普通单播 IP、TCP 上的 HTTPS、有范围的游标拉取和可选 WebSocket 提示。显式配对与带外密钥核验是一等能力。DNS-SD over mDNS 只是本地链路上的可选提示；它不可用是正常情况。
+基线仍是普通单播 IP、TCP 上的 HTTPS 和有范围的游标拉取。[ADR 0010](0010-wss-live-session-and-recovery.zh.md) 选择 WSS 作为已批准的在线实时会话；本记录保留发现、信任与部署约束。显式配对与带外密钥核验是一等能力。DNS-SD over mDNS 只是本地链路上的可选提示；它不可用是正常情况。
 
-第一版只协商协议/schema 版本、Peer 证明、日志纪元、端点提示、大小上限和可选群/加密配置档 ID。必需值不支持时明确失败。QUIC、HTTP/2、WebTransport、libp2p、Peer 交换和 relay 属于停车场，直到出现测量瓶颈并有回退测试。
+第一版只协商协议/schema 版本、Peer 证明、日志纪元、端点提示、大小上限和可选群/加密配置档 ID。必需值不支持时明确失败。QUIC、WebTransport、HTTP/2、libp2p、Peer 交换和 relay 仍是延期实验，直到出现可测瓶颈、限定实验范围，并有持久恢复回退测试。
 
 Linko 不要求或配置 VLAN、ACL、802.1X、组播侦听、QoS、巨型帧或路由器固件。它们可以是有用的部署控制，但应用无法可靠探测或协商这些特性。跳数是预算，不是风暴控制。
 

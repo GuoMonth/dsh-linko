@@ -12,7 +12,7 @@ An Agent can often identify that it needs help, but the useful collaborator, rel
 
 Linko is a local-first collaboration mesh for DeepSeek Harness. It maintains scoped, evidence-backed capability claims; recommends collaborators for a task; packages each request as a human-readable and machine-readable envelope; moves the request through a bounded LAN/P2P network; and returns inbound work to a human-controlled reply policy.
 
-The first transport profile is deliberately ordinary: a local node, SQLite, REST synchronization, WebSocket acceleration, direct peer delivery, and bounded discovery. Advanced router, switch, QUIC, or WebTransport features may improve the ceiling but are not installation requirements.
+The first transport profile keeps SQLite and REST cursor synchronization as the durable recovery foundation, with an approved WSS online live session, direct peer delivery, and bounded discovery. The WSS session remains an implementation gate. WebTransport and QUIC are deferred experiments; routers and switches provide deployment reachability, not application-layer routing.
 
 ## First users
 
@@ -63,7 +63,7 @@ The first transport profile is deliberately ordinary: a local node, SQLite, REST
 - A full replacement for team chat or project management software.
 - A central cloud directory required for normal LAN operation.
 - Automatic sharing of a user's complete conversation history.
-- Unbounded gossip, full-mesh connections, or discovery by payload broadcast.
+- Unbounded gossip, full-mesh connections, application-layer routing, or discovery by payload broadcast.
 - Dependence on a router, switch, VLAN, QoS, 802.1X, or firewall feature for basic messaging.
 - Arbitrary remote HTML or JavaScript as a trusted UI or authority source.
 - Group rooms above 500 members in the first protocol profile.

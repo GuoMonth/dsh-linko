@@ -11,14 +11,14 @@ DSH / CLI / human inbox
           │ authenticated local API
           ▼
 one TypeScript node + one local SQLite database
-          │ HTTPS request/sync + optional WSS wake-up hints
+          │ HTTPS REST recovery + approved WSS live session (not yet implemented)
           ▼
 another authenticated node
 ```
 
 Three responsibilities are enough: **contracts and pure state transitions**, **transactional storage**, and **I/O adapters**. They are modules in one process, not microservices. The core decides from explicit inputs; it does not open sockets, read clocks, call models, or send notifications. The host validates input, runs a local transaction, then performs queued effects.
 
-Committed domain records are the source of durable facts. REST exposes those records; WebSocket announces changes. Neither transport defines truth. A peer cursor belongs to its issuing node and authorized scope; it is not a global conversation sequence.
+Committed domain records are the source of durable facts. SQLite and the transactional outbox retain durable state and pending delivery; REST cursor synchronization is the canonical recovery interface. The approved WSS live session will carry online envelopes and receipts under the same semantics, but is not yet implemented. No transport defines truth. A peer cursor belongs to its issuing node and authorized scope; it is not a global conversation sequence.
 
 See [data and state transitions](specs/0005-state-and-storage.md) for keys, ownership, transaction boundaries, and failure behavior.
 
@@ -40,9 +40,9 @@ Identity has separate principal, device, and Agent/delegation fields. Agent-comp
 
 ## Networking: one baseline
 
-Use authenticated HTTPS over TCP for peers, with WSS hints when useful and bounded long polling when a socket is unavailable. Both use the same authorization and synchronization semantics. Local browser UI talks only to its local node; it does not manage LAN certificates or peer discovery. The loopback MVP applies an explicit Origin allowlist and is not a trusted network service; peer authorization is mandatory before binding beyond loopback.
+Use authenticated HTTPS over TCP for peer recovery and the approved WSS live session for online envelopes and receipts. Both use the same authorization, validation, deduplication, and storage semantics; REST cursor sync remains canonical when WSS is unavailable. The current node implements HTTPS delivery and REST recovery, not WSS. Local browser UI talks only to its local node; it does not manage LAN certificates or peer discovery. The loopback MVP applies an explicit Origin allowlist and is not a trusted network service; peer authorization is mandatory before binding beyond loopback.
 
-Pair an endpoint and verify its key out of band. mDNS/DNS-SD is optional local-link convenience; advertisements contain minimal endpoint/version information, not capability histories. No normal operation depends on public bootstrap infrastructure. Multi-subnet discovery is a later deployment option.
+Pair an endpoint and verify its key out of band. mDNS/DNS-SD is an optional discovery hint only; advertisements contain minimal endpoint/version information, not capability histories, trust, membership, or message bodies. No normal operation depends on public bootstrap infrastructure. Multi-subnet discovery is a later deployment option.
 
 Routers and switches need no Linko-specific features. Working IP reachability and permitted ports are prerequisites. Manual addressing solves discovery failure, not blocked traffic. VLAN ACLs, Wi-Fi client isolation, and firewalls can require operator configuration; a rendezvous node cannot bypass them.
 
@@ -70,6 +70,6 @@ Human cards render known components. No arbitrary peer HTML/JavaScript execution
 
 Start with explicit transition tables, typed commands/events, SQL constraints, and crash/reorder/duplicate traces. Use property-based tests against an independent model when code exists. Small TLA+/TLC models will check delivery/cursor races and membership serialization before those features ship. Lean 4 is reserved for a specific unbounded proof obligation; it is not a runtime dependency or a substitute for testing storage and networking. See [ADR 0008](decisions/0008-minimal-kernel-and-verification.md).
 
-Rust/WASM remains a planned experiment for a measured deterministic workload, not socket ownership or custom cryptography. Optional transports, Merkle trees, gossip, richer UI adapters, and distributed recommendation algorithms need a demonstrated bottleneck, one bounded scope, and an acceptance test before they enter the baseline.
+Rust/WASM remains a planned experiment for a measured deterministic workload, not socket ownership or custom cryptography. WebTransport and QUIC are deferred experiments. Linko adds no application-layer router or payload flooding. Merkle trees, gossip, richer UI adapters, and distributed recommendation algorithms need a demonstrated bottleneck, one bounded scope, and an acceptance test before they enter the baseline.
 
 Reference assessment and review dispositions are in [the review record](review.md).

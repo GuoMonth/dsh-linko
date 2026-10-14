@@ -62,7 +62,7 @@ Action approval binds the message digest, action ID, audience, authority, and po
 
 A sync token belongs to its issuing peer, authorized stream/scope, and `log_epoch`. Its local append position is neither an actor sequence nor a global conversation order. Authorization is rechecked for every pull.
 
-A rebuilt log or incompatible retention boundary invalidates old tokens. Return an explicit reset requirement and a bounded authorized snapshot-plus-delta path; never return an empty success that silently skips data. A client persists a received batch and its next checkpoint in the same transaction. A WebSocket hint cannot advance that checkpoint.
+A rebuilt log or incompatible retention boundary invalidates old tokens. Return an explicit reset requirement and a bounded authorized snapshot-plus-delta path; never return an empty success that silently skips data. A client persists a received batch and its next checkpoint in the same transaction. WSS live traffic cannot advance that recovery checkpoint; only the canonical REST cursor path does so after durable persistence.
 
 ## Validation and transaction boundaries
 

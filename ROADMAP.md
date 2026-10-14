@@ -10,7 +10,7 @@ Status: baseline complete; changes require review.
 
 - Define the envelope, authorship, independent delivery/read/action facts, and local-node boundary.
 - Define the four durable concepts, local operational rows, merge/conflict rules, cursor scope, and crash boundaries.
-- Define ordinary TCP/HTTPS pull, optional WSS hints, explicit pairing, and the fact that routers and switches are deployment controls.
+- Define WSS as the online live session over TCP/TLS, REST cursor sync and SQLite/outbox as canonical recovery, and explicit pairing; routers and switches remain deployment controls.
 - Define the 500-principal group profile, its membership-authority proposal, and the separate E2EE gate.
 - Keep bilingual entry docs and decisions; make the docs check meaningful enough to catch missing or empty counterparts.
 
@@ -30,12 +30,15 @@ Exit evidence: `pnpm contract:smoke`, `pnpm smoke`, and `pnpm web:smoke` pass; t
 
 ## Phase 2 — Paired two-node transport
 
-Status: paired HTTPS and process-recovery baseline implemented; the adversarial network matrix remains open.
+Status: paired HTTPS and process-recovery baseline implemented; WSS live sessions are approved by [ADR 0010](docs/decisions/0010-wss-live-session-and-recovery.md) but remain unimplemented, and the adversarial network matrix remains open.
 
 - Add explicit pairing and authenticated peer sessions.
-- Make REST pull the recovery contract; add WSS only as a wake-up hint.
+- Add authenticated WSS live sessions for envelopes and receipts, using the same validation, durable commit, and deduplication rules as REST delivery.
+- Keep REST cursor sync and the SQLite outbox as canonical recovery; resume from durable checkpoints and retry uncertain deliveries with the same event identity.
 - Add bounded queues, retries, backoff, log epochs, and reset recovery.
-- Test ordinary TCP, IP changes, sleeping nodes, firewalls, half-open sockets, and missing mDNS.
+- Test ordinary TCP, IP changes, sleeping nodes, firewalls, half-open sockets, missing mDNS, lost acknowledgements, and duplicate live/recovered events.
+
+WSS exit evidence: authenticated bidirectional exchange, bounded queues and backpressure, reconnect backoff, and crash/reconnect traces converge through REST and outbox recovery without duplicate inbox items or repeated action effects. The existing HTTPS recovery fixture does not close this gate.
 
 Current evidence: a real self-signed HTTPS push reaches the second node with one inbox item and a confirmed outbox. `pnpm node:recovery-smoke` now commits a forced-loss/restart trace: the sender's outbox is retried after a kill, the receiver resumes a cursor after restart, and both nodes converge on one event. The fixture is part of CI.
 
@@ -75,8 +78,8 @@ Exit evidence: group content is not claimed as E2EE until key lifecycle, removal
 
 Planned later.
 
-- Add optional mDNS/DNS-SD hints, configured rendezvous, and bounded peer exchange.
-- Keep discovery, query expansion, and anti-entropy budgets separate.
+- Add optional mDNS/DNS-SD discovery hints, configured rendezvous, and bounded peer exchange; hints never grant trust or carry message bodies.
+- Keep discovery, query expansion, and anti-entropy budgets separate; add no application-layer router or payload flooding.
 - Treat the 10,000–20,000 LAN participant envelope as a measurement target, not a supported capacity claim.
 
 Exit evidence: a network budget report covers peer degree, multicast, bytes, duplicates, stale state, queue depth, and recovery on representative LAN/Wi-Fi networks.

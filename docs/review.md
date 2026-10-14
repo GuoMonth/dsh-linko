@@ -2,7 +2,7 @@
 
 English | [中文](review.zh.md)
 
-Status: accepted review outcome for the design phase.
+Status: accepted review outcome for the design phase; the 2026 transport direction is recorded in [ADR 0010](decisions/0010-wss-live-session-and-recovery.md).
 
 This review was prompted by a simple rule: the smallest state model that survives crashes, retries, partitions, and human/Agent ambiguity is more valuable than a long list of future transports. A first review was performed against commit `80f2029`, then the findings were reconciled into the current specifications. Claude Code was used as a separate read-only reviewer; its report is recorded as review evidence, not as an implementation authority.
 
@@ -10,7 +10,7 @@ This review was prompted by a simple rule: the smallest state model that survive
 
 ### 1. The truth boundary was overstated
 
-REST is a recovery and projection interface. WebSocket is a wake-up hint. Neither is the source of truth. Durable accepted domain events and explicitly local operational rows are the truth boundary. A cursor is scoped to its issuing peer, stream, and log epoch.
+REST is a recovery and projection interface. The approved WSS session is an online live path, but neither transport is the source of truth. Durable accepted domain events and explicitly local operational rows are the truth boundary; SQLite and the outbox retain the durable recovery state. A cursor is scoped to its issuing peer, stream, and log epoch.
 
 ### 2. Status was incorrectly treated as one lifecycle
 
@@ -26,7 +26,7 @@ A local check cannot enforce a hard cap during a partition. The first group prof
 
 ### 5. The network baseline was simplified
 
-Ordinary IP, HTTPS over TCP, cursor pull, and optional WSS hints are enough for the first two nodes. mDNS is an optional hint. Router and switch features are deployment controls, never protocol requirements. DHT, Merkle synchronization, full-mesh sockets, and payload flooding are removed from the baseline.
+Ordinary IP and HTTPS over TCP remain the recovery baseline for the first two nodes. The approved WSS live session is a planned online path; REST cursor sync and the SQLite/outbox remain canonical recovery. mDNS is an optional hint. Router and switch features are deployment controls, never protocol requirements. DHT, Merkle synchronization, full-mesh sockets, and payload flooding are removed from the baseline.
 
 ### 6. Capacity and security claims were separated
 
@@ -70,10 +70,10 @@ The first runnable packages exposed a useful failure: package-local green tests 
 
 The first vertical slice was corrected before publication: the node now derives and verifies event IDs, keeps command/attempt metadata out of canonical bytes, maps its sync response to the UI envelope contract, accepts the UI receipt schema, uses an explicit loopback Host/Origin allowlist, records device facts without inferring presentation from read, enforces the action transition table and expiry, and rejects malformed/ahead cursors. The current slice also has a separate authenticated HTTPS peer listener, certificate pinning, bearer secrets, a transactional outbox, and a change cursor that includes receipt/action/outbox updates. `pnpm contract:smoke` crosses the real node response through the real web parser; node smoke covers restart-safe store logic and hostile request probes; and `pnpm node:recovery-smoke` runs a committed two-node HTTPS kill/restart trace in CI.
 
-The critical limits remain deliberate. The local admin API is loopback-only, and the CLI must never bind it to a LAN interface. The peer certificate pin is the trust decision for the self-signed local profile; the request body is held until that pin passes. HTTPS is transport protection, not message-layer E2EE. WebSocket hints, signed authorship claims, group membership, execution effects, a broader failure matrix, and 20,000-participant capacity claims remain outside this MVP.
+The critical limits remain deliberate. The local admin API is loopback-only, and the CLI must never bind it to a LAN interface. The peer certificate pin is the trust decision for the self-signed local profile; the request body is held until that pin passes. HTTPS is transport protection, not message-layer E2EE. WSS live sessions, signed authorship claims, group membership, execution effects, a broader failure matrix, and 20,000-participant capacity claims remain outside this MVP; the current node does not claim WSS support.
 
 ## Round 3 — adversarial contract review
 
 A read-only Claude review then exercised the browser-to-node seam as a hostile consumer. It found a real blocker: the UI submitted the display-level `primary` action while composed envelopes advertised `approve` and `reject`, so every approval returned `ACTION_NOT_REQUESTED`. It also found cursor-reset state leaking old projections, an endpoint-path ambiguity, and UI copy that overstated provenance or preview status.
 
-The MVP now uses the same action identifiers end to end, infers an omitted action only when the envelope offers exactly one action, clears the projection and decision ledger on a cursor reset, rejects peer endpoints with a path or query, labels peer origin as unverified authorship, and distinguishes preview, offline cache, and live node state. The cross-package smoke test exercises an envelope with both `approve` and `reject` and submits the real `approve` action. Bearer comparison is timing-safe. The review's remaining observations are deliberately parked: WebSocket hints, cryptographic author signatures, retention/compaction, multi-action wire projection, and broader network failure coverage.
+The MVP now uses the same action identifiers end to end, infers an omitted action only when the envelope offers exactly one action, clears the projection and decision ledger on a cursor reset, rejects peer endpoints with a path or query, labels peer origin as unverified authorship, and distinguishes preview, offline cache, and live node state. The cross-package smoke test exercises an envelope with both `approve` and `reject` and submits the real `approve` action. Bearer comparison is timing-safe. The review's remaining observations are deliberately parked: WSS implementation and evidence, cryptographic author signatures, retention/compaction, multi-action wire projection, and broader network failure coverage.

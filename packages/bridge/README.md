@@ -31,7 +31,7 @@ Approval only records a Linko receipt. It never executes a command, grants a cap
 
 - DeepSeek Harness internals, plugin loading, scheduler APIs, or host-specific SDK types.
 - LLM prompting, collaborator ranking, context retrieval, or automatic policy decisions.
-- Direct peer sockets, LAN discovery, WebSocket hints, or remote/non-loopback Linko APIs.
+- Direct peer sockets, LAN discovery, WSS live sessions, or remote/non-loopback Linko APIs.
 - Cryptographic signing, message-layer E2EE, capability issuance, or execution of approved work.
 - A guarantee that a peer received a queued `ask` or `reply`; delivery remains the node's observable outbox state.
 

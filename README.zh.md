@@ -19,7 +19,7 @@ Linko 已进入可运行的早期 MVP。本仓库仍采用规格驱动：运行�
 
 ## 项目状态
 
-MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明确配对的双节点 HTTPS 配置档：持久出站队列、证书指纹固定、Bearer 认证、可重试 command ID 和 REST 恢复都已接通。可替换的 TypeScript DSH companion bridge 已通过本地 API 提供 `ask`、`inbox`、`inspect`、`draft`、`approve` 和 `reply` 适配器。WebSocket 提示、消息签名和 E2EE 仍是后续里程碑；这不代表已经支持 2 万节点容量。
+MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明确配对的双节点 HTTPS 配置档：持久出站队列、证书指纹固定、Bearer 认证、可重试 command ID 和 REST 恢复都已接通。可替换的 TypeScript DSH companion bridge 已通过本地 API 提供 `ask`、`inbox`、`inspect`、`draft`、`approve` 和 `reply` 适配器。WSS 在线实时会话、消息签名和 E2EE 仍是后续里程碑；这不代表已经支持 2 万节点容量。
 
 - 产品范围：[English](docs/specs/0001-product-scope.md) · [中文](docs/specs/0001-product-scope.zh.md)
 - 架构：[English](docs/architecture.md) · [中文](docs/architecture.zh.md)
@@ -33,9 +33,9 @@ MVP 现在包含 SQLite 节点和以人为先的信封收件箱，并支持明�
 
 ## 设计方向
 
-第一版物理存储是一个 TypeScript 节点后的一个 SQLite 数据库。不可变事件内容是持久事实；投递尝试、已读、审批和通知是本地运行状态。REST 游标拉取用于恢复，WebSocket 只是可选唤醒提示。未来可以把声明物化为图视图，但第一版不需要图数据库。
+第一版物理存储是一个 TypeScript 节点后的一个 SQLite 数据库。不可变事件内容是持久事实；投递尝试、已读、审批和通知是本地运行状态。REST 游标同步与 SQLite outbox 仍是规范恢复路径。已批准的 [2026 年传输决策](docs/decisions/0010-wss-live-session-and-recovery.zh.md) 选择 WSS 作为在线实时会话；实现仍待完成。未来可以把声明物化为图视图，但第一版不需要图数据库。
 
-网络从普通 IP、TCP 上的 HTTPS 和可选 WebSocket 开始，使用显式配对与可选 mDNS 提示。不要求任何路由器或交换机特性。DHT、Merkle 同步、全连接 socket、区块链共识和 Rust/WASM 都是停车场实验，必须先有测量理由和回退测试。
+网络使用普通 IP 与经过认证的 TCP/TLS 连接，并显式配对。mDNS/DNS-SD 仅是可选发现提示，不授予信任，也不携带消息正文。Linko 不增加应用层路由器或正文洪泛，也不要求 Linko 专用路由器或交换机特性。WebTransport/QUIC 与 DHT、Merkle 同步、全连接 socket、区块链共识、Rust/WASM 都保留为延期实验，必须先有测量理由和回退测试。
 
 ## DeepSeek Harness 适配
 

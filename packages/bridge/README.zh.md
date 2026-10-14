@@ -31,7 +31,7 @@ Bridge 暴露六个操作：
 
 - DeepSeek Harness 内部实现、插件加载、调度器 API 或 Host 专用 SDK 类型。
 - LLM 提示词、协作者排序、上下文检索或自动策略决策。
-- 直接 Peer socket、局域网发现、WebSocket 提示或远程/非 loopback Linko API。
+- 直接 Peer socket、局域网发现、WSS 在线实时会话或远程/非 loopback Linko API。
 - 密码学签名、消息层 E2EE、能力签发或执行已批准的工作。
 - 保证 Peer 已收到排队的 `ask` 或 `reply`；投递仍以节点可观察的 outbox 状态为准。
 

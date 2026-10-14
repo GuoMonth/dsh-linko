@@ -2,13 +2,13 @@
 
 English | [中文](0003-lan-sync-and-transport.zh.md)
 
-Status: draft.
+Status: draft; the 2026 transport direction is recorded in [ADR 0010](../decisions/0010-wss-live-session-and-recovery.md).
 
 ## Baseline
 
-One local node owns one SQLite database. DSH, the human inbox, and CLI adapters use the authenticated local API. Peer sessions use HTTPS over TCP; optional WSS sends wake-up hints. Long polling uses the same bounded sync API. The local UI does not discover or connect to every remote peer.
+One local node owns one SQLite database. DSH, the human inbox, and CLI adapters use the authenticated local API. Peer recovery uses HTTPS over TCP; the approved WSS session is intended for online envelopes and receipts, but is not yet implemented. REST cursor sync and the SQLite/outbox remain canonical recovery. Long polling uses the same bounded sync API. The local UI does not discover or connect to every remote peer.
 
-Working unicast IP reachability and permitted ports are prerequisites. No Linko-specific switch/router feature is required. Manual pairing repairs discovery failure, not firewalls, VLAN ACLs, or Wi-Fi client isolation. Enhanced transports are deferred until a measured need exists.
+Working unicast IP reachability and permitted ports are prerequisites. No Linko-specific switch/router feature is required. Manual pairing repairs discovery failure, not firewalls, VLAN ACLs, or Wi-Fi client isolation. WebTransport and QUIC are deferred experiments until a measured bottleneck and bounded fallback test exist.
 
 ## Pairing and discovery
 
@@ -45,11 +45,11 @@ POST /v1/peer/events          (HTTPS peer listener only)
 
 Expired tokens or changed log epochs trigger an explicit bounded snapshot-plus-delta recovery. An incompatible protocol version produces a version error; a snapshot cannot fix protocol incompatibility. Missing dependencies remain bounded pending work. See [state and storage](0005-state-and-storage.md).
 
-The initial handshake has a closed vocabulary: protocol/schema versions, peer identity proof, log epoch, endpoint hints, maximum frame/batch/object sizes, and optional group/encryption profile IDs. Unsupported required versions or encryption suites fail explicitly. Optional WSS can fall back to pull; required encryption never falls back to plaintext.
+The initial handshake has a closed vocabulary: protocol/schema versions, peer identity proof, log epoch, endpoint hints, maximum frame/batch/object sizes, and optional group/encryption profile IDs. WSS live sessions must preserve these authorization and size boundaries. Unsupported required versions or encryption suites fail explicitly. WSS loss or unavailability falls back to REST cursor recovery; required encryption never falls back to plaintext.
 
-## WebSocket hints
+## WSS live session
 
-The baseline WSS channel announces “state may have changed”; clients pull to establish durable state. It never owns the queue or advances a cursor. Lost or duplicated hints are harmless. Do not add a second live-event delivery protocol until measurements justify it.
+The approved WSS channel carries online envelopes and receipts after authenticated session setup. It does not own durable truth or advance a recovery cursor: SQLite, the outbox, and REST cursor sync remain canonical. Lost acknowledgements, duplicated live/recovered events, and reconnects use the same event identity and deduplication rules. The current node does not implement this session yet; do not describe this specification as shipped behavior.
 
 Require ping/pong or equivalent liveness, idle timeout, frame and queue caps, bounded in-flight requests, graceful close, and exponential reconnect backoff with jitter. Reserve capacity for control traffic so object fetches cannot starve recovery.
 
