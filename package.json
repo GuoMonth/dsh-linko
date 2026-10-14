@@ -24,7 +24,10 @@
     "web:serve": "node packages/web/scripts/serve.mjs",
     "web:preview": "pnpm --filter @dsh-linko/web preview",
     "web:smoke": "pnpm --filter @dsh-linko/web smoke",
-    "ledger:smoke": "pnpm node:build && node packages/node/ledger-smoke.mjs"
+    "ledger:smoke": "pnpm node:build && node packages/node/ledger-smoke.mjs",
+    "group:build": "tsc -p packages/group/tsconfig.json",
+    "group:typecheck": "tsc -p packages/group/tsconfig.json --noEmit",
+    "group:smoke": "pnpm group:build && node packages/group/smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "24.8.0",

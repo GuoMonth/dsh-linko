@@ -15,7 +15,7 @@ LAN messaging and approval panels are useful building blocks. Linko adds the par
 - Context is shared by scope and purpose instead of being broadcast as a complete private history.
 - A person can answer an inbound request, ask their Agent to draft a reply, or delegate a bounded response policy.
 - Every delivery is a small envelope with a human-readable cover, machine-readable semantics, and an optional local body or safe surface.
-- The first group profile is capped at 500 member principals, with group delivery and message-layer E2EE as separate milestones.
+- The experimental first group profile is capped at 500 member principals, with group delivery and message-layer E2EE as separate milestones.
 
 ## Project status
 

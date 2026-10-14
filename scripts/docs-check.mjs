@@ -16,6 +16,7 @@ const paired = [
   'docs/specs/0003-lan-sync-and-transport.md',
   'docs/specs/0004-group-chat-and-e2ee.md',
   'docs/specs/0005-state-and-storage.md',
+  'docs/specs/0007-group-membership-state-machine.md',
   'docs/review.md',
   'packages/web/DESIGN.md',
   'packages/node/README.md',
@@ -28,7 +29,8 @@ const paired = [
   'docs/decisions/0005-local-node-rest-sync-websocket.md',
   'docs/decisions/0006-lan-discovery-and-transport-profile.md',
   'docs/decisions/0007-group-chat-and-e2ee-boundary.md',
-  'docs/decisions/0008-minimal-kernel-and-verification.md'
+  'docs/decisions/0008-minimal-kernel-and-verification.md',
+  'docs/decisions/0009-deterministic-group-membership-reducer.md'
 ];
 
 const missing = [];

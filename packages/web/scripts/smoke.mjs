@@ -386,6 +386,39 @@ async function main() {
   check('an unaddressed draft is not sendable', model.isDraftSendable({ ...draft, peerId: '' }) === false);
   check('a titled addressed draft is sendable', model.isDraftSendable(draft) === true);
 
+  section('Dismissals are durable, local, and bounded');
+  storage.writeJson(storage.KEYS.dismissed, ['event:legacy']);
+  const migratedDismissals = storage.readDismissals(NOW);
+  check('a legacy dismissal survives migration', migratedDismissals['event:legacy'] === NOW);
+  const recent = storage.pruneDismissals(
+    { 'event:keep': NOW - 1_000, 'event:stale': NOW - storage.DISMISSAL_MAX_AGE_MS - 1 },
+    NOW,
+  );
+  check('stale dismissals are pruned by age', recent['event:stale'] === undefined && recent['event:keep'] === NOW - 1_000);
+  const future = storage.pruneDismissals({ 'event:future': NOW + storage.DISMISSAL_MAX_AGE_MS }, NOW);
+  check('future dismissal timestamps are capped at now', future['event:future'] === NOW);
+  const manyDismissals = Object.fromEntries(
+    Array.from({ length: storage.DISMISSAL_MAX_ENTRIES + 12 }, (_, index) => [`event:${index}`, NOW - index]),
+  );
+  const boundedDismissals = storage.pruneDismissals(manyDismissals, NOW);
+  check('dismissal storage has a fixed upper bound', Object.keys(boundedDismissals).length === storage.DISMISSAL_MAX_ENTRIES);
+  storage.writeDismissals({ 'event:durable': NOW }, NOW);
+  check('a dismissal survives a storage round-trip', storage.readDismissals(NOW)['event:durable'] === NOW);
+
+  section('Initial sync establishes a notification baseline');
+  check(
+    'historical initial sync does not notify',
+    model.newEnvelopeCandidates([], [envelopes[0]], false).length === 0,
+  );
+  check(
+    'historical continuation pages stay silent',
+    model.newEnvelopeCandidates([envelopes[0]], [envelopes[1]], false).length === 0,
+  );
+  check(
+    'a later unseen envelope is notification-eligible',
+    model.newEnvelopeCandidates([envelopes[0]], [envelopes[0], envelopes[1]], true).length === 1,
+  );
+
   section('Cursor persistence and reset');
   storage.writeString(storage.KEYS.cursor, 'cursor-abc');
   check('cursor round-trips through storage', storage.readString(storage.KEYS.cursor) === 'cursor-abc');
@@ -402,12 +435,19 @@ async function main() {
   const reset = await api.fetchEnvelopes('http://127.0.0.1:1', 'stale-cursor');
   check('a 409 is treated as a reset instruction, not an error', reset.ok === true);
   check('a reset clears the cursor', reset.ok === true && reset.value.resetRequired === true && reset.value.cursor === null);
+  check('a reset has no continuation page', reset.ok === true && reset.value.hasMore === false);
 
   globalThis.fetch = async () =>
-    new Response(JSON.stringify({ events: [envelopes[0]], cursor: 'cursor-next' }), { status: 200 });
+    new Response(JSON.stringify({ events: [envelopes[0]], nextCursor: 'cursor-next', hasMore: true }), { status: 200 });
   const page = await api.fetchEnvelopes('http://127.0.0.1:1', null);
   check('a page parses and yields the next cursor', page.ok === true && page.value.cursor === 'cursor-next');
   check('a page yields envelopes', page.ok === true && page.value.envelopes.length === 1);
+  check('a page preserves the node continuation marker', page.ok === true && page.value.hasMore === true);
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ events: [], nextCursor: 'cursor-final', hasMore: false }), { status: 200 });
+  const finalPage = await api.fetchEnvelopes('http://127.0.0.1:1', page.ok ? page.value.cursor : null);
+  check('the final page closes the continuation marker', finalPage.ok === true && finalPage.value.hasMore === false);
 
   globalThis.fetch = async () => {
     throw new Error('offline');

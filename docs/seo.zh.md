@@ -6,7 +6,7 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 
 ## 标准描述
 
-面向 DeepSeek Harness 的开源、本地优先信封消息：TypeScript 节点、SQLite 本地状态、有范围的 REST 游标同步、WebSocket 唤醒提示、带证据的协作者发现，以及单独设置 E2EE 里程碑的 500 个主体群配置档。
+面向 DeepSeek Harness 的开源、本地优先信封消息：TypeScript 节点、SQLite 本地状态、有范围的 REST 游标同步、WebSocket 唤醒提示、带证据的协作者发现，以及单独设置 E2EE 里程碑的实验性 500 个主体群配置档。
 
 ## 主要术语
 
@@ -19,7 +19,7 @@ Linko 在增加文档网站前，先通过仓库元数据和清晰的公开术�
 - message envelope protocol
 - REST cursor synchronization
 - WebSocket wake-up hints
-- group chat up to 500 members
+- planned experimental group profile for up to 500 members
 - TypeScript 7 and pnpm 12
 - human-in-the-loop Agent approval
 

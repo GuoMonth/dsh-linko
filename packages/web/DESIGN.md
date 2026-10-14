@@ -58,7 +58,10 @@ this client cannot honour. The copy says so rather than leaving the absence
 unexplained.
 
 Dismissing ("搁置") is a separate, local-only marker. It changes nothing on the
-node and is labelled as staying on this device.
+node and is labelled as staying on this device. The marker is a timestamped
+local record, so it survives a reload; corrupt or older-than-30-day records are
+pruned on load, and the ledger is capped at 128 entries. This bounded cleanup
+cannot change the envelope, its authorship, or any node-owned action fact.
 
 ## Composing and sending
 
@@ -91,16 +94,23 @@ they are not the same problem:
 ## Persistence and polling
 
 `localStorage` holds the node address, the sync cursor, the device id, the
-outbox, undecided submissions and dismissals. All of it is client-side
-convenience or client-side state; none of it is authority.
+outbox, undecided submissions and timestamped dismissals. Dismissals survive a
+reload but are bounded to 128 recent records and expire after 30 days; malformed
+or stale rows are discarded locally. All of it is client-side convenience or
+client-side state; none of it is authority.
 
 Polling is incremental and cursor-based, with exponential backoff on failure and
-a reset to the healthy interval when the tab becomes visible again. Incoming
-pages are deduplicated by event id, and the newer node snapshot wins for an
-event, because the node's facts only move forward and inventing a field-by-field
-merge here would put this client in the position of deciding facts it does not
-own. A `409` cursor reset is treated as an instruction — drop the cursor and pull
-from the start once — not as an error to show the user.
+a reset to the healthy interval when the tab becomes visible again. A first sync
+drains every page indicated by `hasMore` before establishing the historical
+baseline, and no page in that recovery pass produces desktop notifications.
+Reconnects and `409` cursor resets close the baseline and repeat that drain. Later
+pages are deduplicated by event id, and only previously unseen ids can notify
+after the user grants permission; notification emission remains independent from
+delivered, presented, read, acknowledged and action facts. The newer node
+snapshot wins for an event, because the node's facts only move forward and
+inventing a field-by-field merge here would put this client in the position of
+deciding facts it does not own. A `409` cursor reset is treated as an instruction
+— drop the cursor and drain from the start — not as an error to show the user.
 
 ## Fogg behaviour model
 
@@ -184,7 +194,9 @@ and `LINKO_TLS_CERT`); this client only reads the resulting peer directory.
 - **Decisions are submitted, not queued offline.** A decision attempted while the
   node is unreachable is recorded as failed with a retry, rather than being
   queued silently and reported later as if it had succeeded.
-- **No durable cursor for a reset.** A cursor reset re-pulls the bounded page;
-  there is no local cache of the full log.
+- **No durable cursor for a reset.** A cursor reset drains the bounded pages from
+  the start; there is no local cache of the full log.
+- **Dismissals are local and bounded.** A dismissal can expire after 30 days or
+  fall out of the 128-entry local ledger; expiry never changes node facts.
 - **Not an end-to-end encrypted client.** Group E2EE is a separate milestone and
   nothing here claims otherwise.

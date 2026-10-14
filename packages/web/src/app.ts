@@ -38,6 +38,7 @@ import {
   buildHumanEnvelope,
   currentDecision,
   mergeEnvelopes,
+  newEnvelopeCandidates,
   needsDecision,
   nextUndecided,
   recordDecision,
@@ -51,7 +52,21 @@ import {
   type Peer,
   type SendRecord,
 } from './model.js';
-import { KEYS, cacheBody, readBodyCache, readJson, readString, remove, writeJson, writeString, type BodyCache } from './storage.js';
+import {
+  KEYS,
+  cacheBody,
+  pruneDismissals,
+  readBodyCache,
+  readDismissals,
+  readJson,
+  readString,
+  remove,
+  writeDismissals,
+  writeJson,
+  writeString,
+  type BodyCache,
+  type DismissalLedger,
+} from './storage.js';
 import {
   banner,
   composeView,
@@ -89,6 +104,7 @@ interface State {
   peersAvailable: boolean;
   decisions: DecisionLedger;
   dismissed: Set<string>;
+  dismissalTimes: DismissalLedger;
   outbox: SendRecord[];
   selectedId: string | null;
   view: View;
@@ -110,6 +126,8 @@ interface State {
   bodyLoading: Set<string>;
   bodyErrors: Record<string, string>;
   notificationStatus: 'unsupported' | 'default' | 'granted' | 'denied';
+  /** A complete page drain establishes history; only later arrivals notify. */
+  initialSyncComplete: boolean;
 }
 
 const EMPTY_DRAFT: ComposeDraft = {
@@ -150,6 +168,7 @@ function applyTheme(theme: Theme): void {
 }
 
 const deviceId = loadDeviceId();
+const initialDismissals = readDismissals();
 
 const state: State = {
   config: configFromEnvironment(window.location.search, readString(KEYS.apiBase)),
@@ -162,7 +181,8 @@ const state: State = {
   peers: [],
   peersAvailable: false,
   decisions: readJson<DecisionLedger>(KEYS.decisions, {}),
-  dismissed: new Set(readJson<string[]>(KEYS.dismissed, [])),
+  dismissed: new Set(Object.keys(initialDismissals)),
+  dismissalTimes: initialDismissals,
   outbox: readJson<SendRecord[]>(KEYS.outbox, []),
   selectedId: null,
   view: 'inbox',
@@ -184,6 +204,7 @@ const state: State = {
   bodyLoading: new Set(),
   bodyErrors: {},
   notificationStatus: typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  initialSyncComplete: false,
 };
 
 const dom = {
@@ -209,7 +230,24 @@ function requireElement(id: string): HTMLElement {
 function persist(): void {
   writeJson(KEYS.decisions, state.decisions);
   writeJson(KEYS.outbox, state.outbox);
-  writeJson(KEYS.dismissed, [...state.dismissed]);
+  state.dismissalTimes = pruneDismissals(state.dismissalTimes, Date.now());
+  state.dismissed = new Set(Object.keys(state.dismissalTimes));
+  writeDismissals(state.dismissalTimes);
+}
+
+function dismissLocally(eventId: string): void {
+  const dismissedAt = Date.now();
+  state.dismissed.add(eventId);
+  state.dismissalTimes = { ...state.dismissalTimes, [eventId]: dismissedAt };
+  persist();
+}
+
+function undismissLocally(eventId: string): void {
+  state.dismissed.delete(eventId);
+  const next = { ...state.dismissalTimes };
+  delete next[eventId];
+  state.dismissalTimes = next;
+  persist();
 }
 
 function refreshNotificationStatus(): void {
@@ -291,6 +329,9 @@ async function poll(): Promise<void> {
   try {
     const node = await fetchNode(state.config.base);
     if (node === null) {
+      // A reconnect starts a fresh historical pass. Events pulled while the
+      // tab was offline must not be mistaken for live arrivals.
+      state.initialSyncComplete = false;
       state.connection = 'offline';
       state.node = null;
       state.source = state.source === 'node' ? 'offline' : 'preview';
@@ -298,14 +339,19 @@ async function poll(): Promise<void> {
       state.syncError = `无法连接 ${state.config.base}`;
       state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
     } else {
-      // Fixtures are a preview, never data. The moment a node answers, they are
-      // dropped along with any cursor, so the inbox only ever shows real events.
-      if (state.source !== 'node') {
+      const nodeChanged = state.node !== null
+        && (state.node.nodeId !== node.nodeId || state.node.logEpoch !== node.logEpoch);
+      // Fixtures are a preview, never data. A real node replaces preview data;
+      // cached real envelopes remain available across an offline reconnect.
+      if (state.source === 'preview') {
         state.envelopes = [];
         persistCursor(null);
         state.skipped = 0;
         state.selectedId = null;
+        state.initialSyncComplete = false;
       }
+      if (nodeChanged) state.initialSyncComplete = false;
+      if (state.connection === 'offline') state.initialSyncComplete = false;
       state.node = node;
       state.connection = 'online';
       state.pollDelay = POLL_HEALTHY_MS;
@@ -322,32 +368,86 @@ async function poll(): Promise<void> {
 
 async function syncOnce(): Promise<void> {
   let outcome = await fetchEnvelopes(state.config.base, state.cursor);
-
-  // A cursor the node no longer honours is an instruction, not an error:
-  // drop it and pull from the start exactly once (spec 0005).
-  if (outcome.ok && outcome.value.resetRequired) {
-    persistCursor(null);
-    state.envelopes = [];
-    state.selectedId = null;
-    state.decisions = {};
-    persist();
-    outcome = await fetchEnvelopes(state.config.base, null);
-  }
-
-  if (!outcome.ok) {
-    state.syncError = describeFailure(outcome);
-    state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
-    return;
-  }
+  let baselineComplete = state.initialSyncComplete;
 
   state.syncError = null;
   state.source = 'node';
-  state.skipped = outcome.value.skipped;
-  const known = new Set(state.envelopes.map((envelope) => envelope.id));
-  const fresh = outcome.value.envelopes.filter((envelope) => !known.has(envelope.id));
-  state.envelopes = mergeEnvelopes(state.envelopes, outcome.value.envelopes);
-  persistCursor(outcome.value.cursor);
-  notifyNewEnvelopes(fresh);
+  state.skipped = 0;
+  let previousCursor = state.cursor;
+  let resetCount = 0;
+  const notifiedIds = new Set<string>();
+  const pendingNotifications: Envelope[] = [];
+
+  // Drain every page before declaring the historical baseline complete. A
+  // reconnect or cursor reset leaves baselineComplete false, so every page in
+  // that recovery pass is silent even when it contains unseen event ids.
+  while (true) {
+    // A reset can arrive between two pages while the node rotates its log
+    // epoch. Restart the complete drain once, then fail closed if the node
+    // keeps returning a reset instruction.
+    if (outcome.ok && outcome.value.resetRequired) {
+      if (resetCount > 0) {
+        state.initialSyncComplete = false;
+        state.syncError = '节点连续要求重置同步游标';
+        state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
+        return;
+      }
+      resetCount += 1;
+      persistCursor(null);
+      state.envelopes = [];
+      state.selectedId = null;
+      state.decisions = {};
+      state.initialSyncComplete = false;
+      baselineComplete = false;
+      state.skipped = 0;
+      previousCursor = null;
+      notifiedIds.clear();
+      pendingNotifications.length = 0;
+      persist();
+      outcome = await fetchEnvelopes(state.config.base, null);
+      continue;
+    }
+
+    if (!outcome.ok) {
+      state.syncError = describeFailure(outcome);
+      state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
+      return;
+    }
+
+    const page = outcome.value;
+    state.skipped += page.skipped;
+    const fresh = baselineComplete
+      ? newEnvelopeCandidates(state.envelopes, page.envelopes, true)
+      : [];
+    state.envelopes = mergeEnvelopes(state.envelopes, page.envelopes);
+    persistCursor(page.cursor);
+
+    if (baselineComplete) {
+      const uniqueFresh = fresh.filter((envelope) => {
+        if (notifiedIds.has(envelope.id)) return false;
+        notifiedIds.add(envelope.id);
+        return true;
+      });
+      pendingNotifications.push(...uniqueFresh);
+    }
+
+    if (!page.hasMore) break;
+    if (page.cursor === null || page.cursor === previousCursor) {
+      // A page claiming continuation without a progressing cursor cannot be
+      // drained deterministically. Keep the baseline closed and retry safely.
+      state.initialSyncComplete = false;
+      state.syncError = '节点返回了无法继续的同步分页';
+      state.pollDelay = Math.min(state.pollDelay * 2, POLL_MAX_BACKOFF_MS);
+      return;
+    }
+    previousCursor = page.cursor;
+    outcome = await fetchEnvelopes(state.config.base, page.cursor);
+  }
+
+  state.initialSyncComplete = true;
+  // Notify only after the complete page drain succeeds. If a later page
+  // requests a cursor reset, all earlier pages are historical recovery too.
+  if (baselineComplete) notifyNewEnvelopes(pendingNotifications);
 }
 
 /**
@@ -649,14 +749,12 @@ function detailHandlersFor(envelope: Envelope): DetailHandlers {
       void retryDecision(envelope);
     },
     onDismiss: () => {
-      state.dismissed.add(envelope.id);
-      persist();
+      dismissLocally(envelope.id);
       announce('已搁置（仅本机）');
       render();
     },
     onUndismiss: () => {
-      state.dismissed.delete(envelope.id);
-      persist();
+      undismissLocally(envelope.id);
       render();
     },
     onMarkRead: () => {
@@ -1000,8 +1098,7 @@ window.addEventListener('keydown', (event) => {
       break;
     case 'd':
       if (envelope !== null) {
-        state.dismissed.add(envelope.id);
-        persist();
+        dismissLocally(envelope.id);
         render();
       }
       break;

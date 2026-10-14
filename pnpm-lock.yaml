@@ -10,6 +10,9 @@ importers:
         specifier: 12.5.0
         version: 12.5.0
 
+  packages/group:
+    configDependencies: {}
+
 packages:
 
   '@pnpm/exe.android-arm64@12.5.0':
@@ -174,6 +177,8 @@ importers:
         version: 7.0.2
 
   packages/bridge: {}
+
+  packages/group: {}
 
   packages/node: {}
 

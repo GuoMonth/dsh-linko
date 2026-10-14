@@ -41,6 +41,8 @@ export interface SyncResult {
   readonly envelopes: Envelope[];
   readonly skipped: number;
   readonly cursor: string | null;
+  /** True when another bounded page must be pulled with `cursor`. */
+  readonly hasMore: boolean;
   /** The node refused the stored cursor and wants a fresh pull. */
   readonly resetRequired: boolean;
 }
@@ -197,7 +199,7 @@ export async function fetchEnvelopes(base: string, cursor: string | null): Promi
     // A cursor the node no longer honours is not an error the user should see:
     // it is an instruction to pull from the start, exactly once (spec 0005).
     if (outcome.code === 'CURSOR_RESET' || outcome.status === 409) {
-      return { ok: true, value: { envelopes: [], skipped: 0, cursor: null, resetRequired: true } };
+      return { ok: true, value: { envelopes: [], skipped: 0, cursor: null, hasMore: false, resetRequired: true } };
     }
     return outcome;
   }
@@ -206,13 +208,14 @@ export async function fetchEnvelopes(base: string, cursor: string | null): Promi
   const record = typeof outcome.value === 'object' && outcome.value !== null
     ? (outcome.value as Record<string, unknown>)
     : {};
-  const nextCursor = record['cursor'];
+  const nextCursor = record['nextCursor'] ?? record['cursor'];
   return {
     ok: true,
     value: {
       envelopes: parsed.envelopes,
       skipped: parsed.skipped,
       cursor: typeof nextCursor === 'string' && nextCursor.length <= 512 ? nextCursor : null,
+      hasMore: record['hasMore'] === true,
       resetRequired: false,
     },
   };

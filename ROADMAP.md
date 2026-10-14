@@ -52,9 +52,9 @@ Current evidence: a person can inspect sender, authority, context, audience, and
 
 ## Phase 4a — Groups over the event log
 
-Planned.
+Experimental kernel implemented; the profile remains planned until transport and recovery evidence closes the gate.
 
-- Implement the group membership state machine and one designated membership signer per group.
+- Keep the dependency-free group membership reducer as a domain kernel and define one designated membership signer per group.
 - Enforce the 500 active-principal profile at signed version commits; initial profile permits one active device per principal.
 - Use bounded direct fan-out and unicast/bounded read receipts.
 - Measure 2, 50, 200, and 500 principals at the actual device count.

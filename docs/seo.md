@@ -6,7 +6,7 @@ Linko uses repository metadata and clear public terminology before it adds a doc
 
 ## Canonical description
 
-Open-source, local-first envelope messaging for DeepSeek Harness: a TypeScript node, SQLite-backed local state, scoped REST cursor synchronization, WebSocket wake-up hints, evidence-backed collaborator discovery, and a 500-principal group profile with a separate E2EE milestone.
+Open-source, local-first envelope messaging for DeepSeek Harness: a TypeScript node, SQLite-backed local state, scoped REST cursor synchronization, WebSocket wake-up hints, evidence-backed collaborator discovery, and an experimental 500-principal group profile with a separate E2EE milestone.
 
 ## Primary terms
 
@@ -19,7 +19,7 @@ Open-source, local-first envelope messaging for DeepSeek Harness: a TypeScript n
 - message envelope protocol
 - REST cursor synchronization
 - WebSocket wake-up hints
-- group chat up to 500 members
+- experimental group profile planned for up to 500 members
 - TypeScript 7 and pnpm 12
 - human-in-the-loop Agent approval
 

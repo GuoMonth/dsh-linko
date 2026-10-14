@@ -10,3 +10,5 @@ Specifications describe externally observable requirements. They are numbered so
 - [0004 Group chat capacity and end-to-end encryption](0004-group-chat-and-e2ee.md)
 - [0005 Data and state transitions](0005-state-and-storage.md)
 - [0006 Local cognitive ledger and collaborator recommendations](0006-cognitive-ledger-and-recommendations.md)
+- [0007 Group membership state machine](0007-group-membership-state-machine.md)
+- [0008 Action approval policy boundary](0008-action-policy-boundary.md)

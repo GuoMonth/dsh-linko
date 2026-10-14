@@ -343,6 +343,21 @@ export function mergeEnvelopes(existing: readonly Envelope[], incoming: readonly
   return [...byId.values()];
 }
 
+/**
+ * Return only events that arrived after the initial sync baseline. A first page
+ * is historical recovery, even when it contains events this tab has not seen;
+ * notifications are a later local convenience and never replay that history.
+ */
+export function newEnvelopeCandidates(
+  existing: readonly Envelope[],
+  incoming: readonly Envelope[],
+  initialSyncComplete: boolean,
+): Envelope[] {
+  if (!initialSyncComplete) return [];
+  const known = new Set(existing.map((envelope) => envelope.id));
+  return incoming.filter((envelope) => !known.has(envelope.id));
+}
+
 /* ------------------------------------------------------------------ *
  * Peers
  * ------------------------------------------------------------------ */

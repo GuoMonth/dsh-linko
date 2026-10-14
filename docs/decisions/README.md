@@ -12,3 +12,4 @@ Decision records capture choices that affect the product boundary, protocol, or 
 - [0006 LAN discovery and transport profile](0006-lan-discovery-and-transport-profile.md)
 - [0007 Group chat capacity and E2EE boundary](0007-group-chat-and-e2ee-boundary.md)
 - [0008 Minimal kernel and verification boundary](0008-minimal-kernel-and-verification.md)
+- [0009 Deterministic group membership reducer](0009-deterministic-group-membership-reducer.md)

@@ -12,3 +12,4 @@
 - [0006 局域网发现与传输配置档](0006-lan-discovery-and-transport-profile.zh.md)
 - [0007 群聊容量与 E2EE 边界](0007-group-chat-and-e2ee-boundary.zh.md)
 - [0008 最小内核与验证边界](0008-minimal-kernel-and-verification.zh.md)
+- [0009 确定性群组成员 Reducer](0009-deterministic-group-membership-reducer.zh.md)

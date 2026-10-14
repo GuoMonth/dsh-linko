@@ -2,6 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { actionBinding, reduceActionDecision, type ActionAttempt } from "./action-policy.js";
 import type { ActionState, Envelope, EventState, OutboxItem, PeerConfig, SyncItem } from "./types.js";
 
 const MAX_EVENT_BYTES = 1024 * 1024;
@@ -50,13 +51,6 @@ function canonicalizeAt(value: unknown, depth: number): string {
 function deriveEventId(value: Record<string, unknown>): string { return `sha256:${createHash("sha256").update(canonicalize(value)).digest("hex")}`; }
 function now(): string { return new Date().toISOString(); }
 function isActionState(value: string): value is ActionState { return ["requested", "awaiting_approval", "approved", "executing", "succeeded", "failed", "uncertain", "rejected", "expired"].includes(value); }
-function actionTransitionAllowed(previous: ActionState | null, next: ActionState): boolean {
-  // UI receipts only represent a decision. Once approved or rejected, it is immutable in this milestone.
-  if (previous === null || previous === next) return true;
-  if (previous === "approved" || previous === "rejected" || previous === "expired" || previous === "succeeded" || previous === "uncertain") return false;
-  return previous === "requested" || previous === "awaiting_approval" ? next === "approved" || next === "rejected" : false;
-}
-
 function asEnvelope(value: unknown, ensureIdentity = false): Envelope {
   const input = jsonObject(value);
   const copy: Record<string, unknown> = { ...input };
@@ -124,7 +118,7 @@ function sendPayloadHash(value: unknown): string {
   return createHash("sha256").update(canonicalize(normalized)).digest("hex");
 }
 
-export interface NodeStoreOptions { dbPath?: string; nodeId?: string; peers?: readonly PeerConfig[]; }
+export interface NodeStoreOptions { dbPath?: string; nodeId?: string; peers?: readonly PeerConfig[]; clock?: () => string; }
 export interface InsertResult { eventId: string; cursor: number; duplicate: boolean; attemptId: string; item: SyncItem; }
 export interface SyncResult { events: SyncItem[]; cursor: string; nextCursor: string; hasMore: boolean; logEpoch: string; }
 export interface SendResult { eventId: string; item: SyncItem; delivery: "queued" | "confirmed"; duplicate: boolean; }
@@ -159,9 +153,11 @@ export class NodeStore {
   readonly db: DatabaseSync;
   readonly dbPath: string;
   private closed = false;
+  private readonly clock: () => string;
   private readonly peerMap: Map<string, PeerConfig>;
   constructor(options: NodeStoreOptions = {}) {
     this.dbPath = options.dbPath ?? process.env.LINKO_DB ?? ".linko/node.sqlite";
+    this.clock = options.clock ?? now;
     if (this.dbPath !== ":memory:") mkdirSync(dirname(this.dbPath), { recursive: true });
     this.db = new DatabaseSync(this.dbPath);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;");
@@ -172,11 +168,17 @@ export class NodeStore {
       CREATE TABLE IF NOT EXISTS receipt_facts (event_id TEXT NOT NULL REFERENCES events(event_id), device_id TEXT NOT NULL, kind TEXT NOT NULL, recorded_at TEXT NOT NULL, PRIMARY KEY (event_id, device_id, kind));
       CREATE TABLE IF NOT EXISTS delivery_attempts (attempt_id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(event_id), status TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS commands (client_id TEXT NOT NULL, command_id TEXT NOT NULL, event_id TEXT NOT NULL REFERENCES events(event_id), payload_hash TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (client_id, command_id));
-      CREATE TABLE IF NOT EXISTS actions (event_id TEXT NOT NULL REFERENCES events(event_id), action_id TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (event_id, action_id));
+      CREATE TABLE IF NOT EXISTS actions (event_id TEXT NOT NULL REFERENCES events(event_id), action_id TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, event_digest TEXT, audience TEXT, authority TEXT, policy_version TEXT, device_id TEXT, PRIMARY KEY (event_id, action_id));
       CREATE TABLE IF NOT EXISTS changes (change_cursor INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL REFERENCES events(event_id), kind TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS outbox (event_id TEXT PRIMARY KEY REFERENCES events(event_id), peer_id TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS event_origins (event_id TEXT PRIMARY KEY REFERENCES events(event_id), peer_id TEXT);
     `);
+    // Keep databases created by the previous MVP readable. Nullable columns
+    // make old action rows fail closed until a complete identity is present.
+    const actionColumns = new Set((this.db.prepare("PRAGMA table_info(actions)").all() as unknown as SqlRow[]).map((row) => String(row.name)));
+    for (const column of ["event_digest", "audience", "authority", "policy_version", "device_id"]) {
+      if (!actionColumns.has(column)) this.db.exec(`ALTER TABLE actions ADD COLUMN ${column} TEXT`);
+    }
     const nodeId = options.nodeId ?? process.env.LINKO_NODE_ID ?? `node:${randomUUID()}`;
     this.db.prepare("INSERT OR IGNORE INTO meta(key, value) VALUES ('node_id', ?)").run(nodeId);
     this.db.prepare("INSERT OR IGNORE INTO meta(key, value) VALUES ('log_epoch', ?)").run(`epoch:${randomUUID()}`);
@@ -264,6 +266,12 @@ export class NodeStore {
     if (command !== undefined) this.db.prepare("INSERT INTO commands(client_id, command_id, event_id, payload_hash, created_at) VALUES (?, ?, ?, ?, ?)").run(client, command, eventId, payloadHash, timestamp);
     this.db.prepare("INSERT INTO inbox(event_id, delivered_at) VALUES (?, ?)").run(eventId, timestamp);
     this.db.prepare("INSERT INTO event_origins(event_id, peer_id) VALUES (?, ?)").run(eventId, sourcePeerId ?? null);
+    const semantic = envelope.semantic && typeof envelope.semantic === "object" && !Array.isArray(envelope.semantic) ? envelope.semantic as Record<string, unknown> : null;
+    const availableActions = semantic && Array.isArray(semantic.availableActions) ? semantic.availableActions.filter((action): action is string => typeof action === "string" && action.length > 0 && action.length <= 256) : [];
+    for (const actionId of availableActions) {
+      const binding = actionBinding(envelope, eventId, actionId, "");
+      this.db.prepare("INSERT OR IGNORE INTO actions(event_id, action_id, status, updated_at, event_digest, audience, authority, policy_version, device_id) VALUES (?, ?, 'requested', ?, ?, ?, ?, ?, NULL)").run(eventId, actionId, timestamp, binding.eventDigest, binding.audience, binding.authority, binding.policyVersion);
+    }
     this.db.prepare("INSERT INTO delivery_attempts(attempt_id, event_id, status, created_at) VALUES (?, ?, 'delivered', ?)").run(id, eventId, timestamp);
     const cursor = this.addChange(eventId, "arrival");
     return { eventId, cursor, duplicate: false, attemptId: id, item: this.getItem(eventId) };
@@ -329,7 +337,7 @@ export class NodeStore {
     if (!["presented", "read", "acknowledged", "approved", "rejected"].includes(state)) throw new StoreError("INVALID_INPUT", `unsupported receipt state ${state}`);
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const item = this.getItem(eventId); const timestamp = now();
+      const item = this.getItem(eventId); const timestamp = this.clock();
       if (state === "approved" || state === "rejected") {
         const semantic = item.envelope.semantic; const available = semantic && typeof semantic === "object" && !Array.isArray(semantic) && Array.isArray((semantic as Record<string, unknown>).availableActions) ? (semantic as Record<string, unknown>).availableActions as unknown[] : [];
         const actionId = typeof body.actionId === "undefined"
@@ -340,12 +348,26 @@ export class NodeStore {
               : (() => { throw new StoreError("ACTION_REQUIRED", "actionId is required when an envelope offers multiple actions", 400); })()
           : stringValue(body.actionId, "actionId", 256);
         if (!available.includes(actionId)) throw new StoreError("ACTION_NOT_REQUESTED", "action is not requested by this envelope", 409);
-        const policy = item.envelope.policy; const expiresAt = policy && typeof policy === "object" && !Array.isArray(policy) ? (policy as Record<string, unknown>).expiresAt : undefined;
-        if (state === "approved" && typeof expiresAt === "string" && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) <= Date.now()) throw new StoreError("APPROVAL_EXPIRED", "the envelope approval window has expired", 409);
-        const existing = asRow(this.db.prepare("SELECT status FROM actions WHERE event_id = ? AND action_id = ?").get(eventId, actionId)); const previous = existing ? String(existing.status) as ActionState : null;
-        if (!actionTransitionAllowed(previous, state as ActionState)) throw new StoreError("INVALID_TRANSITION", `action ${actionId} cannot move from ${previous} to ${state}`, 409);
-        this.db.prepare("INSERT INTO actions(event_id, action_id, status, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(event_id, action_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at").run(eventId, actionId, state, timestamp);
-        if (!existing || previous !== state) this.addChange(eventId, "action");
+        const existing = asRow(this.db.prepare("SELECT status, event_digest, audience, authority, policy_version, device_id FROM actions WHERE event_id = ? AND action_id = ?").get(eventId, actionId));
+        if (!existing) throw new StoreError("ACTION_NOT_REQUESTED", "action request state is missing", 409);
+        const binding = actionBinding(item.envelope, eventId, actionId, deviceId);
+        const previous: ActionAttempt | null = existing ? {
+          status: String(existing.status) as ActionState,
+          binding: {
+            eventDigest: existing.event_digest === null || existing.event_digest === undefined ? eventId : String(existing.event_digest),
+            actionId,
+            audience: existing.audience === null || existing.audience === undefined ? null : String(existing.audience),
+            authority: existing.authority === null || existing.authority === undefined ? null : String(existing.authority),
+            policyVersion: existing.policy_version === null || existing.policy_version === undefined ? null : String(existing.policy_version),
+            deviceId: existing.device_id === null || existing.device_id === undefined ? "" : String(existing.device_id),
+          },
+        } : null;
+        const decision = reduceActionDecision({ eventDigest: eventId, envelope: item.envelope, actionId, decision: state as "approved" | "rejected", deviceId, at: timestamp, previous });
+        if (!decision.ok) throw new StoreError(decision.code, decision.message, decision.code === "INVALID_INPUT" ? 400 : 409);
+        if (!decision.duplicate) {
+          this.db.prepare("INSERT INTO actions(event_id, action_id, status, updated_at, event_digest, audience, authority, policy_version, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id, action_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, event_digest = excluded.event_digest, audience = excluded.audience, authority = excluded.authority, policy_version = excluded.policy_version, device_id = excluded.device_id").run(eventId, actionId, state, timestamp, binding.eventDigest, binding.audience, binding.authority, binding.policyVersion, binding.deviceId);
+          this.addChange(eventId, "action");
+        }
         this.db.exec("COMMIT"); return { item: this.getItem(eventId), kind: "action", state, actionId };
       }
       const column = state === "presented" ? "presented_at" : state === "read" ? "read_at" : "acknowledged_at";

@@ -1,0 +1,12 @@
+{
+  "name": "@dsh-linko/group",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Experimental dependency-free deterministic group membership kernel for Linko's planned 500-principal profile.",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
