@@ -21,8 +21,8 @@ const created = await request("/v1/envelopes", {
   body: JSON.stringify({
     kind: "message.note",
     cover: { title: "Cross-package contract", preview: "The UI must see this cover." },
-    semantic: { intent: "inform", availableActions: [] },
-    policy: { requiresApproval: false },
+    semantic: { intent: "request", availableActions: ["approve", "reject"] },
+    policy: { requiresApproval: true },
   }),
 });
 const page = await request("/v1/sync");
@@ -40,10 +40,10 @@ assert.equal(parsed.envelopes[0].id, created.eventId);
 
 const receipt = await request("/v1/receipts", {
   method: "POST",
-  body: JSON.stringify({ eventId: created.eventId, actionId: "primary", state: "approved", deviceId: "device:web" }),
+  body: JSON.stringify({ eventId: created.eventId, actionId: "approve", state: "approved", deviceId: "device:web" }),
 });
 assert.equal(receipt.item.eventId, created.eventId);
-assert.equal(receipt.item.state.actions.primary.status, "approved");
+assert.equal(receipt.item.state.actions.approve.status, "approved");
 
 console.log("Cross-package contract smoke passed: node sync -> web parser -> approval");
 await new Promise((resolve) => server.close(resolve));

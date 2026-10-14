@@ -28,9 +28,20 @@ GET  /v1/objects/{hash}
 POST /v1/receipts
 ```
 
-These are conceptual endpoints, not a frozen wire format. The loopback MVP uses an explicit Origin allowlist and has no peer authentication; every non-loopback profile MUST authenticate and scope requests. POST deduplicates by verified event identity. Sync returns a bounded batch and opaque next token tied to issuing peer, authorized scope, and log epoch. A cursor is not a global message order. Persist the batch and next checkpoint atomically.
+These are conceptual endpoints, not a frozen wire format. The local admin profile uses loopback Host and Origin checks; the paired non-loopback profile authenticates the separate peer listener and scopes requests to configured peers. POST deduplicates by verified event identity. Sync returns a bounded batch and opaque next token tied to issuing peer, authorized scope, and log epoch. A cursor is not a global message order. Persist the batch and next checkpoint atomically.
 
-The MVP wire shape returns each `events[]` item as the envelope fields plus `eventId`, `cursor`, and a sibling `facts` object. The facts object is a projection; it is not part of the immutable envelope. `POST /v1/receipts` accepts `{ eventId, deviceId?, state, actionId? }`, where `state` is `presented`, `read`, `acknowledged`, or an explicit action transition. A real node response must pass through the web parser in the cross-package contract fixture.
+The MVP wire shape returns each `events[]` item as the envelope fields plus `eventId`, `cursor`, and a sibling `facts` object. The facts object is a projection; it is not part of the immutable envelope. `POST /v1/receipts` accepts `{ eventId, deviceId?, state, actionId? }`, where `state` is `presented`, `read`, `acknowledged`, `approved`, or `rejected`. Approval and rejection are terminal decisions in this milestone; no receipt starts execution. A real node response must pass through the web parser in the cross-package contract fixture.
+
+The paired delivery profile adds three small surfaces:
+
+```text
+GET  /v1/peers
+POST /v1/send                 { peerId, envelope, clientId, commandId }
+GET  /v1/outbox
+POST /v1/peer/events          (HTTPS peer listener only)
+```
+
+`/v1/send` commits the local envelope and its outbox row together. A retry uses the same `clientId` and `commandId`; the receiver stores the same event identity at least once and returns a duplicate response when appropriate. The sender has a finite retry budget and exposes `abandoned` rather than retrying forever; a new explicit command can requeue the same event. The peer listener has no local-admin routes, requires the configured bearer secret, and checks the configured certificate pin on outbound connections. The local admin listener stays on loopback. A peer directory exposes labels only, never secrets.
 
 Expired tokens or changed log epochs trigger an explicit bounded snapshot-plus-delta recovery. An incompatible protocol version produces a version error; a snapshot cannot fix protocol incompatibility. Missing dependencies remain bounded pending work. See [state and storage](0005-state-and-storage.md).
 

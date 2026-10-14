@@ -23,16 +23,16 @@ The canonical envelope never changes. Delivery, presentation, read, acknowledgem
 
 Every envelope identifies its creating actor:
 
-- \`human\`: written and sent by a person;
-- \`agent-delegated\`: written or sent under a human delegation;
-- \`agent-autonomous\`: created under an Agent's local policy;
-- \`system\`: produced by a node for transport or synchronization.
+- `human`: written and sent by a person;
+- `agent-delegated`: written or sent under a human delegation;
+- `agent-autonomous`: created under an Agent's local policy;
+- `system`: produced by a node for transport or synchronization.
 
 Author, composer, sender, and delegator remain separate fields. A signature proves control of a key over an asserted author; it does not prove that a person typed the text. An autonomous Agent message must never be rendered as human-authored.
 
 ## Agent policy
 
-The first intent vocabulary is \`inform\`, \`suggest\`, \`request\`, \`delegate\`, and \`command\`. A recipient may automatically accept informative events. External side effects, context disclosure, fan-out, and further delegation require an explicit capability and may require a human approval.
+The first intent vocabulary is `inform`, `suggest`, `request`, `delegate`, and `command`. A recipient may automatically accept informative events. External side effects, context disclosure, fan-out, and further delegation require an explicit capability and may require a human approval.
 
 Risk, approval, expiry, hop, fan-out, and byte budgets constrain consequences. A client-supplied dedupe key is not a second identity for the message; retry identity belongs to the command or delivery attempt. Policy fields cannot turn prose into executable authority.
 
@@ -48,19 +48,19 @@ An Agent can request a scoped detail reference and should receive the smallest o
 
 The protocol does not use one enum for all message status:
 
-- the transport attempt can be queued, sending, accepted, retried, rejected, or abandoned;
-- recipient storage can become \`delivered\` after a durable commit;
-- a device can be \`presented\` or \`read\`;
-- a person or authorized Agent can explicitly \`acknowledged\`;
+- the transport attempt can be queued, sending, confirmed, retry_wait, rejected, or abandoned;
+- recipient storage can become `delivered` after a durable commit;
+- a device can be `presented` or `read`;
+- a person or authorized Agent can explicitly `acknowledged`;
 - an action has its own approval and execution attempt.
 
-\`accepted\` is a receiver observation, not human approval. \`delivered\` never means read. \`read\` never means acknowledged. \`acted\` is an effect record and may occur without read. Per-device facts are retained; an aggregate may say “read on one device” and must not imply “read on every device.”
+`confirmed` is a receiver observation, not human approval. `delivered` never means read. `read` never means acknowledged. `acted` is an effect record and may occur without read. Per-device facts are retained; an aggregate may say “read on one device” and must not imply “read on every device.”
 
 Private read markers use local conversation positions. Shared read receipts name event IDs or validated author-sequence ranges, are bounded, and are sent only to the author or an agreed aggregator. They are not broadcast to every group member.
 
 ## Example shape
 
-\`\`\`json
+```json
 {
   "id": "sha256:...",
   "kind": "collaboration.request",
@@ -84,7 +84,7 @@ Private read markers use local conversation positions. Shared read receipts name
   },
   "seal": { "contentHash": "sha256:...", "signature": "..." }
 }
-\`\`\`
+```
 
 ## Acceptance evidence
 

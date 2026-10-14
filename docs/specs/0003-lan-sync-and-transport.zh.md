@@ -28,9 +28,20 @@ GET  /v1/objects/{hash}
 POST /v1/receipts
 ```
 
-这些是概念端点，不是冻结的线协议。loopback MVP 使用明确的 Origin 白名单，不提供 Peer 认证；所有非 loopback 配置档都必须认证并检查范围。POST 按验证后的事件身份去重。同步返回有界批次和不透明下一 token，绑定签发 Peer、授权范围和日志纪元。游标不是全局消息顺序。批次和下一检查点原子保存。
+这些是概念端点，不是冻结的线协议。本地管理配置档检查回环 Host 和 Origin；双节点非 loopback 配置档通过独立 Peer 监听器认证，并把请求限制到已配置的 Peer。POST 按验证后的事件身份去重。同步返回有界批次和不透明下一 token，绑定签发 Peer、授权范围和日志纪元。游标不是全局消息顺序。批次和下一检查点原子保存。
 
-MVP 的线形状是：`events[]` 每一项直接包含信封字段，并带 `eventId`、`cursor` 和同级的 `facts` 对象。facts 是投影，不是不可变信封的一部分。`POST /v1/receipts` 接受 `{ eventId, deviceId?, state, actionId? }`，其中 `state` 可以是 `presented`、`read`、`acknowledged` 或明确的动作转移。真实节点响应必须在跨包 contract fixture 中经过 Web parser。
+MVP 的线形状是：`events[]` 每一项直接包含信封字段，并带 `eventId`、`cursor` 和同级的 `facts` 对象。facts 是投影，不是不可变信封的一部分。`POST /v1/receipts` 接受 `{ eventId, deviceId?, state, actionId? }`，其中 `state` 可以是 `presented`、`read`、`acknowledged`、`approved` 或 `rejected`。本里程碑中批准和拒绝都是终态回执，不会启动执行。真实节点响应必须在跨包 contract fixture 中经过 Web parser。
+
+双节点投递配置档增加三个小接口：
+
+```text
+GET  /v1/peers
+POST /v1/send                 { peerId, envelope, clientId, commandId }
+GET  /v1/outbox
+POST /v1/peer/events          （仅 HTTPS Peer 监听器）
+```
+
+`/v1/send` 在同一事务中提交本地信封和出站队列。重试必须复用 `clientId` 与 `commandId`；接收方以至少一次方式保存同一事件身份，并在适当时返回 duplicate。发送方有有限的重试预算，耗尽后显示 `abandoned`，不会无限重试；显式使用新的 command 可以让同一事件重新排队。Peer 监听器不提供本地管理路由，要求配置的 Bearer 密钥；发送方检查配置的证书指纹。本地管理监听器保持在回环地址。Peer 目录只暴露标签，不暴露密钥。
 
 token 过期或日志纪元变化触发明确、有界的快照加增量恢复。协议不兼容返回版本错误；快照不能修复协议不兼容。缺依赖进入有界待处理状态。见[数据与状态](0005-state-and-storage.zh.md)。
 

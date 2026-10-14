@@ -41,12 +41,14 @@ assert.equal(read.item.state.presentedAt, null);
 assert.equal(read.item.state.devices[0].presentation, "read");
 const approval = await request("/v1/receipts", {
   method: "POST",
-  body: JSON.stringify({ eventId: first.eventId, actionId: "approve", state: "approved" }),
+  body: JSON.stringify({ eventId: first.eventId, state: "approved" }),
 });
 assert.equal(approval.item.state.actions.approve.status, "approved");
 
 const next = await request(`/v1/sync?cursor=${encodeURIComponent(page.nextCursor)}`, { method: "GET" });
-assert.equal(next.events.length, 0);
+assert.equal(next.events.length, 1);
+assert.equal(next.events[0].eventId, first.eventId);
+assert.equal(next.events[0].facts.devices[0].presentation, "read");
 const health = await request("/v1/health", { method: "GET" });
 assert.equal(health.storage, "sqlite");
 console.log("Linko smoke passed: write -> duplicate delivery -> sync cursor -> read -> action approval");

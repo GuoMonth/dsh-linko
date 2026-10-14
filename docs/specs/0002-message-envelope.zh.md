@@ -23,16 +23,16 @@ Linko 消息是不可变信封，可以独立于某个 UI 被投递、存储、�
 
 每个信封都标识创建它的参与者：
 
-- \`human\`：人编写并发送；
-- \`agent-delegated\`：在人类委托下编写或发送；
-- \`agent-autonomous\`：依据 Agent 本地策略创建；
-- \`system\`：节点为传输或同步生成。
+- `human`：人编写并发送；
+- `agent-delegated`：在人类委托下编写或发送；
+- `agent-autonomous`：依据 Agent 本地策略创建；
+- `system`：节点为传输或同步生成。
 
 作者、编写者、发送者和授权者仍是不同字段。签名证明某个密钥控制者对声明作者的绑定，不证明文字由人亲手输入。自主 Agent 消息绝不能渲染成人类作者消息。
 
 ## Agent 策略
 
-第一版意图词汇为 \`inform\`、\`suggest\`、\`request\`、\`delegate\` 和 \`command\`。接收方可以自动接受通知型事件。外部副作用、上下文披露、扇出和继续委托需要明确能力，并可能要求人工审批。
+第一版意图词汇为 `inform`、`suggest`、`request`、`delegate` 和 `command`。接收方可以自动接受通知型事件。外部副作用、上下文披露、扇出和继续委托需要明确能力，并可能要求人工审批。
 
 风险、审批、过期、跳数、扇出和字节预算约束影响范围。客户端提供的 dedupe key 不再作为消息的第二身份；重试身份属于命令或投递尝试。策略字段不能把自然语言自动变成执行权限。
 
@@ -48,19 +48,19 @@ Agent 可以请求有范围的详情引用，应只收到当前决策所需的�
 
 协议不使用一个状态枚举覆盖所有消息状态：
 
-- 传输尝试可以是 queued、sending、accepted、retry、rejected 或 abandoned；
-- 接收存储在持久提交后可以变为 \`delivered\`；
-- 设备可以记录 \`presented\` 或 \`read\`；
-- 人或有权 Agent 可以明确 \`acknowledged\`；
+- 传输尝试可以是 queued、sending、confirmed、retry_wait、rejected 或 abandoned；
+- 接收存储在持久提交后可以变为 `delivered`；
+- 设备可以记录 `presented` 或 `read`；
+- 人或有权 Agent 可以明确 `acknowledged`；
 - 动作拥有自己的审批和执行尝试。
 
-\`accepted\` 是接收方观察，不是人的批准。\`delivered\` 不等于已读。\`read\` 不等于已确认。\`acted\` 是效果记录，可以在未读时发生。按设备保留事实；聚合只能说“已在一台设备阅读”，不能暗示“所有设备已读”。
+`confirmed` 是接收方观察，不是人的批准。`delivered` 不等于已读。`read` 不等于已确认。`acted` 是效果记录，可以在未读时发生。按设备保留事实；聚合只能说“已在一台设备阅读”，不能暗示“所有设备已读”。
 
 私有已读标记使用本地会话位置。共享已读回执携带事件 ID 或验证过的参与者序号范围，有边界，并且只发给作者或约定的聚合方，不广播给群内所有成员。
 
 ## 示例结构
 
-\`\`\`json
+```json
 {
   "id": "sha256:...",
   "kind": "collaboration.request",
@@ -84,7 +84,7 @@ Agent 可以请求有范围的详情引用，应只收到当前决策所需的�
   },
   "seal": { "contentHash": "sha256:...", "signature": "..." }
 }
-\`\`\`
+```
 
 ## 验收证据
 

@@ -2,20 +2,58 @@
 
 English | [中文](README.zh.md)
 
-This package is the first runnable local-only node. It uses one TypeScript process and one SQLite database.
+This package runs one durable Linko node with a SQLite database. The local HTTP API is loopback-only. Paired nodes use a separate HTTPS listener with a pinned certificate and a per-peer bearer secret; TLS protects transport but does not provide end-to-end encryption.
 
-## Run
+## Run one node
 
-\`\`\`sh
+```sh
 pnpm node:start
 pnpm node:smoke
 pnpm contract:smoke
-\`\`\`
+```
 
-The node listens on loopback by default at port \`8787\`. Set \`LINKO_PORT\`, \`LINKO_DB\`, and \`LINKO_NODE_ID\` to change the local process. The browser preview defaults to \`http://127.0.0.1:8477\`; use \`?api=http://127.0.0.1:8787\` when the node uses its default port.
+The local API listens on `127.0.0.1:8787` by default. Set `LINKO_PORT`, `LINKO_DB`, `LINKO_NODE_ID`, and `LINKO_ALLOWED_ORIGINS` to change local settings.
+
+## Run two paired nodes
+
+Generate a certificate for each node (use a CA and DNS/IP names appropriate to a real deployment; this short command is for a local two-node check):
+
+```sh
+mkdir -p .linko
+openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+  -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' \
+  -keyout .linko/node-a.key -out .linko/node-a.crt
+openssl x509 -in .linko/node-a.crt -noout -fingerprint -sha256
+```
+
+Create one owner-readable config (`chmod 600 .linko/peers.json`) for each node. `certSha256` is the certificate fingerprint with or without colons, and `bearerSecret` is a random value shared with the receiving node:
+
+```json
+{
+  "peers": [
+    {
+      "peerId": "node-b",
+      "label": "Node B",
+      "endpoint": "https://127.0.0.1:8788",
+      "certSha256": "AA:BB:…:FF",
+      "bearerSecret": "replace-with-a-random-secret"
+    }
+  ]
+}
+```
+
+Start each process with its own DB, node ID, TLS files, and peer config. The HTTPS listener is disabled unless both TLS paths are set:
+
+```sh
+LINKO_DB=.linko/a.sqlite LINKO_NODE_ID=node-a LINKO_PEERS_FILE=.linko/peers-a.json \
+LINKO_TLS_KEY=.linko/node-a.key LINKO_TLS_CERT=.linko/node-a.crt \
+LINKO_PORT=8787 LINKO_PEER_PORT=8788 pnpm node:start
+```
+
+`GET /v1/peers` returns only `peerId` and `label`. `POST /v1/send` accepts `{peerId,envelope,clientId,commandId}`. It writes the local copy and outbox transactionally, retries the same event ID up to eight times with bounded exponential backoff, and deduplicates a command after restart. An exhausted item is visible as `abandoned`; an explicit new command can requeue the same event. `GET /v1/outbox` exposes delivery status and attempt count. The receiver accepts only authenticated HTTPS peer ingress; its local admin API is never exposed on that listener.
 
 ## MVP contract
 
-The MVP supports immutable local envelopes, canonical content-derived event IDs, duplicate delivery attempts, SQLite WAL transactions, cursor pull, per-device presentation/read/acknowledgement facts, and approval state transitions. The cross-package smoke test exercises the real node response through the real web parser.
+`GET /v1/sync` returns flattened UI envelopes. Its opaque cursor covers arrivals, receipt/action changes, and outbox changes, and is scoped to the SQLite log epoch. `POST /v1/receipts` accepts `presented`, `read`, `acknowledged`, `approved`, or `rejected`; approval checks the requested action and expiry, and approved/rejected decisions are terminal for this milestone. Immutable envelopes cannot claim `facts`; the node projects those facts from its own durable rows.
 
-REST cursor pull is the durable path. WebSocket wake-up hints, peer pairing, signatures, multi-node authorization, and E2EE are intentionally deferred. The node advertises this honestly in \`/v1/node\`; this package is a local state prototype, not a trusted network service.
+WebSocket hints, signatures, and message-layer E2EE remain outside this MVP. HTTPS pairing authenticates the configured peer channel and must not be replaced with plaintext or TOFU.

@@ -6,7 +6,7 @@ This roadmap reduces uncertainty before adding breadth. Every phase needs a fixt
 
 ## Phase 0 — Cut and pin the contract
 
-Status: in progress.
+Status: baseline complete; changes require review.
 
 - Define the envelope, authorship, independent delivery/read/action facts, and local-node boundary.
 - Define the four durable concepts, local operational rows, merge/conflict rules, cursor scope, and crash boundaries.
@@ -18,37 +18,37 @@ Exit evidence: a reader can name the authoritative event record, the projection 
 
 ## Phase 1 — Single-node MVP
 
-Status: runnable local prototype; hardening continues.
+Status: MVP complete; integration hardening continues.
 
 - Implement one TypeScript node and one SQLite database.
 - Implement immutable message events, command/delivery idempotency, local inbox projections, read markers, and approval/action attempts.
-- Expose the small local API: health, node info, create envelope, scoped sync, object fetch, and receipt/action commands.
-- Provide a human envelope-cover preview and an offline fixture.
-- Exercise duplicate/out-of-order delivery, cursor pull, crash recovery, approval expiry, and the node-to-UI contract.
+- Expose the small local API: health, node info, create/send envelope, scoped sync, peer directory, outbox, and receipt/action commands.
+- Provide a human envelope-cover preview, compose/reply flow, and an offline fixture.
+- Exercise duplicate delivery, cursor pull, approval expiry, hostile local requests, and the node-to-UI contract.
 
-Exit evidence: `pnpm contract:smoke` makes a real node response pass through the real UI parser and records an approval without duplicating the event; crash and peer evidence remain open.
+Exit evidence: `pnpm contract:smoke`, `pnpm smoke`, and `pnpm web:smoke` pass; the real node response passes through the UI parser and an approval does not duplicate the event. A committed kill-and-restart trace remains open.
 
 ## Phase 2 — Paired two-node transport
 
-Planned.
+Status: paired HTTPS baseline implemented; recovery fixture remains open.
 
 - Add explicit pairing and authenticated peer sessions.
 - Make REST pull the recovery contract; add WSS only as a wake-up hint.
 - Add bounded queues, retries, backoff, log epochs, and reset recovery.
 - Test ordinary TCP, IP changes, sleeping nodes, firewalls, half-open sockets, and missing mDNS.
 
-Exit evidence: forced socket loss converges after pull recovery with one inbox item and no silent cursor skip.
+Current evidence: a real self-signed HTTPS push reaches the second node with one inbox item and a confirmed outbox. Exit evidence still requires a committed forced-loss/restart fixture and pull convergence test.
 
 ## Phase 3 — Envelope UI and Agent policy
 
-Planned.
+Status: human-first envelope UI implemented; policy breadth remains planned.
 
 - Render the cover before the body and keep untrusted surfaces inert.
 - Show human, delegated Agent, autonomous Agent, and system authorship.
 - Add risk, intent, expiry, capability, approval, fan-out, and byte policies.
 - Use one obvious next action, immediate feedback, reversible choices, and a compact audit trail.
 
-Exit evidence: a person can inspect sender, authority, context, audience, and action before approving, and can undo a local dismissal.
+Current evidence: a person can inspect sender, authority, context, audience, and action before approving; decisions wait for node confirmation and no fake undo is offered. A durable local-dismissal policy remains open.
 
 ## Phase 4a — Groups over the event log
 

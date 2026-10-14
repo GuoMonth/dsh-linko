@@ -16,7 +16,8 @@ export type ActionState =
   | "rejected"
   | "expired";
 
-export type ReceiptState = "presented" | "read" | "acknowledged" | ActionState;
+/** States that the local UI may record through POST /v1/receipts. */
+export type ReceiptState = "presented" | "read" | "acknowledged" | "approved" | "rejected";
 
 export interface EventState {
   delivered: boolean;
@@ -32,6 +33,24 @@ export interface SyncItem {
   id: string;
   eventId: string;
   cursor: number;
+  originPeerId: string | null;
   envelope: Envelope;
   state: EventState;
+}
+
+export interface PeerConfig {
+  peerId: string;
+  label: string;
+  endpoint: string;
+  certSha256: string;
+  bearerSecret: string;
+}
+
+export interface OutboxItem {
+  eventId: string;
+  peerId: string;
+  status: "queued" | "sending" | "confirmed" | "retry_wait" | "rejected" | "abandoned";
+  attempts: number;
+  nextAttemptAt: string | null;
+  lastError?: string;
 }

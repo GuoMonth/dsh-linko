@@ -7,17 +7,18 @@
  * No DOM, no network, no framework. Every export is a pure function so that
  * scripts/smoke.mjs runs exactly the code the browser runs.
  *
- * Two rules from the specs are enforced structurally here rather than by
- * convention in the view layer:
+ * Three rules are enforced structurally here rather than by convention in the
+ * view layer:
  *
  *   1. Delivery, read, acknowledgement and action are independent dimensions.
- *      There is no combined status enum, and no derivation may turn one into
- *      another. `delivered` never means read; `read` never means acknowledged;
- *      `acted` may occur without read.
- *   2. An envelope from the network is untrusted input. `parseEnvelope` copies
- *      only known fields, drops everything else, strips control and bidi
- *      characters, and bounds every string, so no remote field can reach the
- *      DOM except as inert text.
+ *      There is no combined status, and no derivation turns one into another.
+ *   2. A decision is only real once the node says so. Local records describe a
+ *      *submission attempt* (`pending`/`failed`/`confirmed`), never an outcome;
+ *      the action fact is always the node's.
+ *   3. An envelope from the network is untrusted input. `parseEnvelope` copies
+ *      only known fields, bounds every string, strips control and bidi
+ *      characters, and **rejects** an envelope whose actor kind it does not
+ *      recognise rather than relabelling it.
  */
 
 /* ------------------------------------------------------------------ *
@@ -33,27 +34,22 @@ export type Intent = (typeof INTENTS)[number];
 export const RISKS = ['low', 'medium', 'high'] as const;
 export type Risk = (typeof RISKS)[number];
 
-/** Outbound job dimension. Terminals: rejected, abandoned. */
 export const OUTBOUND_STATES = ['queued', 'sending', 'confirmed', 'retry_wait', 'rejected', 'abandoned'] as const;
 export type OutboundState = (typeof OUTBOUND_STATES)[number];
 
-/** Recipient storage dimension. `accepted` and `usable` are distinct. */
 export const STORAGE_STATES = ['unknown', 'accepted', 'dependency_pending', 'usable'] as const;
 export type StorageState = (typeof STORAGE_STATES)[number];
 
-/** Recipient inbox dimension. */
 export const INBOX_STATES = ['absent', 'delivered'] as const;
 export type InboxState = (typeof INBOX_STATES)[number];
 
-/** Human presentation dimension. Per device. */
 export const PRESENTATION_STATES = ['unseen', 'presented', 'read'] as const;
 export type PresentationState = (typeof PRESENTATION_STATES)[number];
 
-/** Acknowledgement dimension. Never inferred from read. */
 export const ACK_STATES = ['absent', 'acknowledged'] as const;
 export type AckState = (typeof ACK_STATES)[number];
 
-/** Action attempt dimension, including its own approval and execution. */
+/** The node's action vocabulary, including `expired` (spec 0005 policy terminal). */
 export const ACTION_STATES = [
   'requested',
   'awaiting_approval',
@@ -67,7 +63,6 @@ export const ACTION_STATES = [
 ] as const;
 export type ActionState = (typeof ACTION_STATES)[number];
 
-/** Delegation dimension, checked again when an action starts. */
 export const DELEGATION_STATES = ['granted', 'active', 'expired', 'revoked'] as const;
 export type DelegationState = (typeof DELEGATION_STATES)[number];
 
@@ -78,7 +73,6 @@ export type DelegationState = (typeof DELEGATION_STATES)[number];
 export interface Actor {
   readonly kind: ActorKind;
   readonly id: string;
-  /** Composer, sender and delegator stay separate fields (spec 0002). */
   readonly composerId: string | null;
   readonly delegatorId: string | null;
 }
@@ -109,11 +103,7 @@ export interface DeviceFacts {
   readonly presentation: PresentationState;
 }
 
-/**
- * Facts are observations recorded against the envelope. They are held apart
- * from the envelope's own immutable content, and each is optional: an
- * unobserved fact stays `unknown`/`absent` and is never rendered as progress.
- */
+/** Observations recorded against an envelope, each independent of the others. */
 export interface EnvelopeFacts {
   readonly outbound: OutboundState;
   readonly storage: StorageState;
@@ -125,15 +115,18 @@ export interface EnvelopeFacts {
 }
 
 export interface Envelope {
-  /** `event_id`: hash of the canonical unsigned payload (spec 0005). */
+  /** The node-derived event id (`sha256:…`). */
   readonly id: string;
+  /** Set by the receiving node; presence is provenance, not authorship proof. */
+  readonly originPeerId: string | null;
   readonly kind: string;
   readonly cover: Cover;
   readonly actor: Actor;
   readonly semantic: Semantic;
   readonly policy: Policy;
-  /** Short content rendered as inert text. Never HTML. */
   readonly inlineBody: string | null;
+  /** Causal references. A reply names its parent here. */
+  readonly parents: readonly string[];
   readonly bodyObjectId: string | null;
   readonly surfaceRef: { readonly surfaceId: string; readonly version: number } | null;
   readonly facts: EnvelopeFacts;
@@ -155,15 +148,16 @@ const MAX = {
   devices: 64,
   actions: 16,
   kind: 80,
+  peers: 200,
 } as const;
 
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 const BIDI_OVERRIDES = /[‪-‮⁦-⁩‎‏]/g;
 
 /**
- * Remove characters that could reorder or corrupt rendered text. Nothing here
- * is an HTML sanitizer: the view layer never interprets markup, so this only
- * protects the plain-text rendering path.
+ * Remove characters that could reorder or corrupt rendered text. This is not an
+ * HTML sanitizer: the view layer never interprets markup, so this only protects
+ * the plain-text rendering path.
  */
 export function sanitizeText(value: string): string {
   return value.replace(CONTROL_CHARS, ' ').replace(BIDI_OVERRIDES, '');
@@ -176,7 +170,6 @@ function asText(value: unknown, maxLength: number): string | null {
   return cleaned;
 }
 
-/** Longer text is truncated rather than rejected, so a chatty peer cannot blank a cover. */
 function asLongText(value: unknown, maxLength: number): string | null {
   if (typeof value !== 'string') return null;
   const cleaned = sanitizeText(value).trim();
@@ -194,10 +187,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function asRefs(value: unknown): string[] {
+function asRefs(value: unknown, max: number = MAX.refs): string[] {
   if (!Array.isArray(value)) return [];
   const refs: string[] = [];
-  for (const entry of value.slice(0, MAX.refs)) {
+  for (const entry of value.slice(0, max)) {
     const ref = asText(entry, MAX.ref);
     if (ref !== null) refs.push(ref);
   }
@@ -232,9 +225,14 @@ function asBoundedInt(value: unknown): number | null {
 }
 
 /**
- * Narrow one untrusted envelope. Returns null when the envelope lacks the
- * minimum a cover needs; otherwise returns a value built only from copied,
- * bounded fields. Unknown keys are dropped, never forwarded.
+ * Narrow one untrusted envelope.
+ *
+ * Returns null when the envelope lacks a cover, an id, or — importantly — an
+ * actor kind this client understands. An unknown kind is refused rather than
+ * quietly rendered as `system`, because mislabelling authorship is exactly the
+ * failure spec 0002 forbids ("An autonomous Agent message must never be rendered
+ * as human-authored", and its converse: a stranger must not be shown as the
+ * node itself).
  */
 export function parseEnvelope(value: unknown): Envelope | null {
   const record = asRecord(value);
@@ -248,8 +246,10 @@ export function parseEnvelope(value: unknown): Envelope | null {
   if (title === null) return null;
 
   const actorRecord = asRecord(coverRecord['actor']) ?? asRecord(record['actor']);
-  const kind = asEnum(actorRecord?.['kind'], ACTOR_KINDS) ?? 'system';
-  const actorId = asText(actorRecord?.['id'], MAX.id) ?? 'unknown';
+  const kind = asEnum(actorRecord?.['kind'], ACTOR_KINDS);
+  if (kind === null) return null;
+  const actorId = asText(actorRecord?.['id'], MAX.id);
+  if (actorId === null) return null;
 
   const semanticRecord = asRecord(record['semantic']) ?? {};
   const policyRecord = asRecord(record['policy']) ?? {};
@@ -259,6 +259,7 @@ export function parseEnvelope(value: unknown): Envelope | null {
 
   return {
     id,
+    originPeerId: asText(record['originPeerId'], MAX.id),
     kind: asText(record['kind'], MAX.kind) ?? 'message',
     cover: {
       title,
@@ -284,6 +285,7 @@ export function parseEnvelope(value: unknown): Envelope | null {
       fanoutLimit: asBoundedInt(policyRecord['fanoutLimit']),
     },
     inlineBody: asLongText(record['inlineBody'], MAX.body) ?? asLongText(record['body'], MAX.body),
+    parents: asRefs(record['parents'], 8),
     bodyObjectId: asText(bodyRef?.['objectId'], MAX.ref),
     surfaceRef: (() => {
       const surfaceId = asText(surfaceRecord?.['surfaceId'], MAX.ref);
@@ -303,7 +305,7 @@ export function parseEnvelope(value: unknown): Envelope | null {
   };
 }
 
-/** Accept the batch shapes a node may plausibly return without trusting any of it. */
+/** Accept the batch shapes a node may return without trusting any of it. */
 export function parseEnvelopeBatch(value: unknown): { envelopes: Envelope[]; skipped: number } {
   const raw: unknown[] = Array.isArray(value)
     ? value
@@ -326,75 +328,227 @@ export function parseEnvelopeBatch(value: unknown): { envelopes: Envelope[]; ski
   return { envelopes, skipped };
 }
 
+/**
+ * Merge a polled page into the inbox, deduplicated by event id.
+ *
+ * The node is authoritative and its facts only move forward, so the newer
+ * server snapshot replaces the older one for the same event. Nothing is merged
+ * field-by-field here: inventing a merge would put this client in the position
+ * of deciding facts it does not own.
+ */
+export function mergeEnvelopes(existing: readonly Envelope[], incoming: readonly Envelope[]): Envelope[] {
+  const byId = new Map<string, Envelope>();
+  for (const envelope of existing) byId.set(envelope.id, envelope);
+  for (const envelope of incoming) byId.set(envelope.id, envelope);
+  return [...byId.values()];
+}
+
 /* ------------------------------------------------------------------ *
- * Decision ledger
+ * Peers
+ * ------------------------------------------------------------------ */
+
+export interface Peer {
+  readonly peerId: string;
+  readonly label: string;
+  readonly status: string | null;
+}
+
+/** Parse `GET /v1/peers`. Accepts `{peers:[…]}` or a bare array. */
+export function parsePeers(value: unknown): Peer[] {
+  const raw: unknown[] = Array.isArray(value)
+    ? value
+    : (() => {
+        const record = asRecord(value);
+        if (record === null) return [];
+        return Array.isArray(record['peers']) ? (record['peers'] as unknown[]) : [];
+      })();
+
+  const peers: Peer[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.slice(0, MAX.peers)) {
+    const record = asRecord(entry);
+    if (record === null) continue;
+    const peerId = asText(record['peerId'], MAX.id) ?? asText(record['id'], MAX.id);
+    if (peerId === null || seen.has(peerId)) continue;
+    seen.add(peerId);
+    peers.push({
+      peerId,
+      label: asText(record['label'], MAX.status) ?? asText(record['name'], MAX.status) ?? peerId,
+      status: asText(record['status'], MAX.status),
+    });
+  }
+  return peers;
+}
+
+/* ------------------------------------------------------------------ *
+ * Outbound commands (compose, reply, send)
  * ------------------------------------------------------------------ */
 
 /**
- * `defer` is a private local operational row: spec 0005 keeps dismissals off
- * the network. `approve`/`reject` are durable work recorded against the action
- * attempt, so they are queued for the node. `reopen` is the compensating
- * record that makes a decision reversible without erasing what happened.
+ * A composed message that has not yet been accepted by the node.
+ *
+ * `nonce` gives every composition a fresh identity even when the text repeats,
+ * which is what keeps two identical-looking messages two events. The event id
+ * itself is derived by the node from the canonical payload — this client must
+ * not invent one, because the node rejects an id that does not match its hash.
  */
-export const DECISION_KINDS = ['defer', 'approve', 'reject', 'reopen'] as const;
-export type DecisionKind = (typeof DECISION_KINDS)[number];
+export interface OutboundCommand {
+  readonly commandId: string;
+  readonly clientId: string;
+  readonly peerId: string;
+  readonly envelope: Record<string, unknown>;
+  readonly createdAt: number;
+  readonly parentEventId: string | null;
+  /** Local preview copy, so the outbox can be read without re-parsing the payload. */
+  readonly title: string;
+}
 
-export type DecisionDurability = 'private-local' | 'durable-event';
+export type SendStatus = 'queued' | 'sending' | 'sent' | 'failed';
 
+export interface SendRecord extends OutboundCommand {
+  readonly status: SendStatus;
+  readonly eventId: string | null;
+  /** The node's delivery state verbatim, never inferred by this client. */
+  readonly nodeDelivery: string | null;
+  readonly error: string | null;
+  readonly updatedAt: number;
+}
+
+export interface ComposeDraft {
+  readonly peerId: string;
+  readonly title: string;
+  readonly preview: string;
+  readonly body: string;
+  readonly intent: Intent;
+  readonly risk: Risk;
+  readonly requiresApproval: boolean;
+}
+
+export interface ReplyTarget {
+  readonly eventId: string;
+  readonly title: string;
+}
+
+export const HUMAN_KIND = 'message.human';
+
+/**
+ * Build the envelope a person is sending.
+ *
+ * The result omits `id` on purpose: the node derives the event id from the
+ * canonical payload and rejects a supplied id that does not match, so the
+ * client's job is to make the payload unique (`nonce`) and idempotent
+ * (`commandId`), not to name the event.
+ */
+export function buildHumanEnvelope(
+  draft: ComposeDraft,
+  options: { readonly nonce: string; readonly authorId: string; readonly replyTo: ReplyTarget | null; readonly now: number },
+): Record<string, unknown> {
+  const envelope: Record<string, unknown> = {
+    kind: HUMAN_KIND,
+    nonce: options.nonce,
+    cover: {
+      title: draft.title,
+      preview: draft.preview,
+      actor: { kind: 'human', id: options.authorId },
+      status: draft.requiresApproval ? 'needs-human-approval' : 'informational',
+    },
+    semantic: {
+      intent: draft.intent,
+      contextRefs: [],
+      availableActions: draft.requiresApproval ? ['approve', 'reject'] : [],
+    },
+    policy: {
+      risk: draft.risk,
+      requiresApproval: draft.requiresApproval,
+      expiresAt: null,
+      hopLimit: 5,
+      fanoutLimit: 8,
+    },
+    createdAt: new Date(options.now).toISOString(),
+  };
+  if (draft.body.trim() !== '') envelope['inlineBody'] = draft.body;
+  if (options.replyTo !== null) {
+    envelope['parents'] = [options.replyTo.eventId];
+    envelope['quote'] = { eventId: options.replyTo.eventId, title: options.replyTo.title };
+  }
+  return envelope;
+}
+
+export function isDraftSendable(draft: ComposeDraft): boolean {
+  return draft.peerId.trim() !== '' && draft.title.trim() !== '';
+}
+
+/* ------------------------------------------------------------------ *
+ * Decisions — submissions, not outcomes
+ * ------------------------------------------------------------------ */
+
+export type DecisionIntent = 'approve' | 'reject';
+export type SubmissionStatus = 'pending' | 'confirmed' | 'failed';
+
+/**
+ * One attempt to record a decision on the node.
+ *
+ * `status` describes this client's submission, never the outcome:
+ *   - `pending`   the request is in flight or waiting to be retried;
+ *   - `confirmed` the node accepted it (the action fact then comes from the node);
+ *   - `failed`    the node refused or was unreachable; nothing was decided.
+ */
 export interface DecisionRecord {
-  readonly sequence: number;
   readonly envelopeId: string;
-  readonly kind: DecisionKind;
+  readonly intent: DecisionIntent;
+  readonly actionId: string;
+  readonly status: SubmissionStatus;
   readonly at: number;
-  /** Envelope digest the approval binds to (spec 0005: approval binds message digest). */
-  readonly bindsTo: string;
+  readonly error: string | null;
 }
 
 export type DecisionLedger = Readonly<Record<string, readonly DecisionRecord[]>>;
 
-export interface DecisionOutcome {
-  readonly ledger: DecisionLedger;
-  readonly record: DecisionRecord;
-}
-
-export function durabilityOf(kind: DecisionKind): DecisionDurability {
-  return kind === 'defer' ? 'private-local' : 'durable-event';
-}
-
-function nextSequence(ledger: DecisionLedger, envelopeId: string): number {
-  const existing = ledger[envelopeId];
-  return existing === undefined || existing.length === 0 ? 1 : existing[existing.length - 1]!.sequence + 1;
+/** The action state a successful decision asks the node for. */
+export function intentToActionState(intent: DecisionIntent): ActionState {
+  return intent === 'approve' ? 'approved' : 'rejected';
 }
 
 export function recordDecision(
   ledger: DecisionLedger,
-  envelope: Envelope,
-  kind: DecisionKind,
+  envelopeId: string,
+  intent: DecisionIntent,
   now: number,
-): DecisionOutcome {
+): { ledger: DecisionLedger; record: DecisionRecord } {
   const record: DecisionRecord = {
-    sequence: nextSequence(ledger, envelope.id),
-    envelopeId: envelope.id,
-    kind,
+    envelopeId,
+    intent,
+    actionId: intent,
+    status: 'pending',
     at: now,
-    bindsTo: envelope.id,
+    error: null,
   };
-  const existing = ledger[envelope.id] ?? [];
-  return { ledger: { ...ledger, [envelope.id]: [...existing, record] }, record };
+  const existing = ledger[envelopeId] ?? [];
+  return { ledger: { ...ledger, [envelopeId]: [...existing, record] }, record };
 }
 
-/** The latest record wins; history is retained for undo and audit. */
+/** Resolve the newest submission attempt for an envelope in place. */
+export function settleDecision(
+  ledger: DecisionLedger,
+  envelopeId: string,
+  status: SubmissionStatus,
+  error: string | null,
+): DecisionLedger {
+  const records = ledger[envelopeId];
+  if (records === undefined || records.length === 0) return ledger;
+  const last = records[records.length - 1]!;
+  const settled: DecisionRecord = { ...last, status, error };
+  return { ...ledger, [envelopeId]: [...records.slice(0, -1), settled] };
+}
+
 export function currentDecision(ledger: DecisionLedger, envelopeId: string): DecisionRecord | null {
   const records = ledger[envelopeId];
   if (records === undefined || records.length === 0) return null;
   return records[records.length - 1]!;
 }
 
-/** Undo is offered only while a reversal is still truthful (spec 0005). */
-export const IRREVERSIBLE_ACTION_STATES: readonly ActionState[] = ['executing', 'succeeded', 'uncertain'];
-
-export function canReverse(actionState: ActionState): boolean {
-  return !IRREVERSIBLE_ACTION_STATES.includes(actionState);
+export function isPending(ledger: DecisionLedger, envelopeId: string): boolean {
+  return currentDecision(ledger, envelopeId)?.status === 'pending';
 }
 
 /* ------------------------------------------------------------------ *
@@ -406,54 +560,59 @@ export function isExpired(envelope: Envelope, now: number): boolean {
 }
 
 /**
- * The action dimension as it stands now: the envelope's own recorded attempt,
- * then the local decision, then expiry. No other dimension feeds this.
+ * The action dimension as it stands now.
+ *
+ * The node owns this fact. The only local input is expiry, which is a property
+ * of the envelope's own policy and which the node enforces for approvals too
+ * (`APPROVAL_EXPIRED`), so showing it cannot disagree with the server.
  */
-export function deriveActionState(envelope: Envelope, ledger: DecisionLedger, now: number): ActionState {
-  const decision = currentDecision(ledger, envelope.id);
-  if (decision !== null) {
-    if (decision.kind === 'approve') return 'approved';
-    if (decision.kind === 'reject') return 'rejected';
-    // `defer` and `reopen` leave the protocol-level attempt where it was.
-  }
-  if (isExpired(envelope, now)) return 'expired';
-  return envelope.facts.action;
+export function deriveActionState(envelope: Envelope, now: number): ActionState {
+  const action = envelope.facts.action;
+  if ((action === 'requested' || action === 'awaiting_approval') && isExpired(envelope, now)) return 'expired';
+  return action;
 }
 
 export function needsDecision(envelope: Envelope, ledger: DecisionLedger, now: number): boolean {
-  const action = deriveActionState(envelope, ledger, now);
+  const action = deriveActionState(envelope, now);
   if (action !== 'requested' && action !== 'awaiting_approval') return false;
+  if (isPending(ledger, envelope.id)) return false;
+  const decision = currentDecision(ledger, envelope.id);
+  if (decision?.status === 'confirmed') return false;
   return envelope.policy.requiresApproval || action === 'awaiting_approval';
-}
-
-export function isDeferred(ledger: DecisionLedger, envelopeId: string): boolean {
-  return currentDecision(ledger, envelopeId)?.kind === 'defer';
 }
 
 export interface Progress {
   readonly total: number;
   readonly decided: number;
-  readonly deferred: number;
   readonly open: number;
+  readonly deferred: number;
   readonly percent: number;
 }
 
-export function summarize(envelopes: readonly Envelope[], ledger: DecisionLedger, now: number): Progress {
+export function summarize(
+  envelopes: readonly Envelope[],
+  ledger: DecisionLedger,
+  dismissed: ReadonlySet<string>,
+  now: number,
+): Progress {
   let decided = 0;
-  let deferred = 0;
   let open = 0;
+  let deferred = 0;
   for (const envelope of envelopes) {
+    if (dismissed.has(envelope.id)) {
+      deferred += 1;
+      continue;
+    }
     const decision = currentDecision(ledger, envelope.id);
-    if (decision?.kind === 'approve' || decision?.kind === 'reject') decided += 1;
-    else if (decision?.kind === 'defer') deferred += 1;
+    if (decision?.status === 'confirmed') decided += 1;
     else if (needsDecision(envelope, ledger, now)) open += 1;
   }
-  const actionable = decided + deferred + open;
+  const actionable = decided + open + deferred;
   return {
     total: envelopes.length,
     decided,
-    deferred,
     open,
+    deferred,
     percent: actionable === 0 ? 100 : Math.round((decided / actionable) * 100),
   };
 }
@@ -462,107 +621,50 @@ export function summarize(envelopes: readonly Envelope[], ledger: DecisionLedger
 export function nextUndecided(
   envelopes: readonly Envelope[],
   ledger: DecisionLedger,
+  dismissed: ReadonlySet<string>,
   now: number,
 ): Envelope | null {
-  return envelopes.find((envelope) => needsDecision(envelope, ledger, now)) ?? null;
+  return envelopes.find((envelope) => !dismissed.has(envelope.id) && needsDecision(envelope, ledger, now)) ?? null;
 }
 
 export type Tone = 'neutral' | 'progress' | 'attention' | 'good' | 'bad' | 'muted';
 
 export interface AuthorshipView {
-  readonly label: string;
+  readonly kind: ActorKind;
   readonly mark: string;
-  readonly detail: string;
   readonly tone: Tone;
-  /** True when the envelope must never be read as human-authored. */
   readonly notHuman: boolean;
 }
 
 const AUTHORSHIP: Readonly<Record<ActorKind, AuthorshipView>> = {
-  human: {
-    label: 'Human',
-    mark: '人',
-    detail: 'Written and sent by a person.',
-    tone: 'neutral',
-    notHuman: false,
-  },
-  'agent-delegated': {
-    label: 'Agent · delegated',
-    mark: '托',
-    detail:
-      'Written or sent under a human delegation. The delegation is rechecked before any action starts, and can be expired or revoked.',
-    tone: 'progress',
-    notHuman: true,
-  },
-  'agent-autonomous': {
-    label: 'Agent · autonomous',
-    mark: '自',
-    detail:
-      'Created by an Agent under its own local policy. A signature proves control of a key over the asserted author; it does not prove that a person typed this.',
-    tone: 'attention',
-    notHuman: true,
-  },
-  system: {
-    label: 'System',
-    mark: '系',
-    detail: 'Produced by a node for transport or synchronization. Carries no human or Agent authorship.',
-    tone: 'muted',
-    notHuman: true,
-  },
+  human: { kind: 'human', mark: '人', tone: 'neutral', notHuman: false },
+  'agent-delegated': { kind: 'agent-delegated', mark: '托', tone: 'progress', notHuman: true },
+  'agent-autonomous': { kind: 'agent-autonomous', mark: '自', tone: 'attention', notHuman: true },
+  system: { kind: 'system', mark: '系', tone: 'muted', notHuman: true },
 };
 
 export function authorshipView(kind: ActorKind): AuthorshipView {
   return AUTHORSHIP[kind];
 }
 
+/** Stable keys for the fact rows; copy lives in render.ts so it can be bilingual. */
+export const FACT_DIMENSIONS = [
+  'transport',
+  'storage',
+  'delivery',
+  'presentation',
+  'acknowledgement',
+  'action',
+  'delegation',
+] as const;
+export type FactDimension = (typeof FACT_DIMENSIONS)[number];
+
 export interface FactView {
-  readonly dimension: string;
+  readonly dimension: FactDimension;
+  /** Vocabulary token from the spec, rendered as-is so it cannot drift. */
   readonly value: string;
   readonly tone: Tone;
-  /** The independence rule this dimension must not be collapsed into. */
-  readonly note: string;
 }
-
-const OUTBOUND_LABEL: Readonly<Record<OutboundState, string>> = {
-  queued: 'Queued',
-  sending: 'Sending',
-  confirmed: 'Confirmed',
-  retry_wait: 'Retry wait',
-  rejected: 'Rejected',
-  abandoned: 'Abandoned',
-};
-
-const STORAGE_LABEL: Readonly<Record<StorageState, string>> = {
-  unknown: 'Unknown',
-  accepted: 'Accepted',
-  dependency_pending: 'Dependency pending',
-  usable: 'Usable',
-};
-
-const PRESENTATION_LABEL: Readonly<Record<PresentationState, string>> = {
-  unseen: 'Unseen',
-  presented: 'Presented',
-  read: 'Read',
-};
-
-const ACTION_LABEL: Readonly<Record<ActionState, string>> = {
-  requested: 'Requested',
-  awaiting_approval: 'Awaiting approval',
-  approved: 'Approved',
-  executing: 'Executing',
-  succeeded: 'Succeeded',
-  failed: 'Failed',
-  uncertain: 'Uncertain',
-  rejected: 'Rejected',
-  expired: 'Expired',
-};
-
-const DELEGATION_LABEL: Readonly<Record<DelegationState, string>> = {
-  granted: 'Granted',
-  active: 'Active',
-  expired: 'Expired',
-  revoked: 'Revoked',
-};
 
 function toneForOutbound(state: OutboundState): Tone {
   if (state === 'confirmed') return 'good';
@@ -580,72 +682,65 @@ function toneForAction(state: ActionState): Tone {
 }
 
 /** Per-device facts are retained; the aggregate never claims every device. */
-export function presentationSummary(devices: readonly DeviceFacts[]): { value: string; tone: Tone } {
-  if (devices.length === 0) return { value: 'No device reported', tone: 'muted' };
-  const read = devices.filter((device) => device.presentation === 'read').length;
-  const presented = devices.filter((device) => device.presentation === 'presented').length;
-  if (read === 0 && presented === 0) return { value: `Unseen on all ${devices.length}`, tone: 'neutral' };
-  if (read === devices.length) return { value: `Read on all ${devices.length}`, tone: 'good' };
-  if (read > 0) return { value: `Read on ${read} of ${devices.length}`, tone: 'progress' };
-  return { value: `Presented on ${presented} of ${devices.length}`, tone: 'progress' };
+export function presentationSummary(devices: readonly DeviceFacts[]): { read: number; presented: number; total: number } {
+  let read = 0;
+  let presented = 0;
+  for (const device of devices) {
+    if (device.presentation === 'read') read += 1;
+    else if (device.presentation === 'presented') presented += 1;
+  }
+  return { read, presented, total: devices.length };
 }
 
 /**
- * Every dimension the envelope carries a fact for, rendered side by side with
- * the rule that keeps it independent. This is the view the inbox exists to
- * show; nothing here is merged into a single status.
+ * Every dimension the envelope carries a fact for, side by side with the rule
+ * that keeps it independent. Nothing here is merged into a single status.
  */
-export function factViews(envelope: Envelope, ledger: DecisionLedger, now: number): FactView[] {
+export function factViews(envelope: Envelope, now: number): FactView[] {
   const facts = envelope.facts;
-  const action = deriveActionState(envelope, ledger, now);
+  const action = deriveActionState(envelope, now);
   const views: FactView[] = [
+    { dimension: 'transport', value: facts.outbound, tone: toneForOutbound(facts.outbound) },
     {
-      dimension: 'Transport attempt',
-      value: OUTBOUND_LABEL[facts.outbound],
-      tone: toneForOutbound(facts.outbound),
-      note: 'Whether this device reached the peer. Unrelated to whether anyone read it.',
-    },
-    {
-      dimension: 'Recipient storage',
-      value: STORAGE_LABEL[facts.storage],
+      dimension: 'storage',
+      value: facts.storage,
       tone: facts.storage === 'usable' ? 'good' : facts.storage === 'dependency_pending' ? 'attention' : 'neutral',
-      note: 'A dependency-pending event is stored but cannot authorize an effect.',
+    },
+    { dimension: 'delivery', value: facts.inbox, tone: facts.inbox === 'delivered' ? 'good' : 'muted' },
+    {
+      dimension: 'presentation',
+      value: presentationToken(facts.devices),
+      tone: presentationSummary(facts.devices).read > 0 ? 'progress' : 'neutral',
     },
     {
-      dimension: 'Delivery',
-      value: facts.inbox === 'delivered' ? 'Delivered' : 'Not delivered',
-      tone: facts.inbox === 'delivered' ? 'good' : 'muted',
-      note: 'Delivered never means read. Body availability is tracked separately.',
-    },
-    {
-      dimension: 'Presentation',
-      value: presentationSummary(facts.devices).value,
-      tone: presentationSummary(facts.devices).tone,
-      note: 'Kept per device. The aggregate never implies “read on every device”.',
-    },
-    {
-      dimension: 'Acknowledgement',
-      value: facts.acknowledgement === 'acknowledged' ? 'Acknowledged' : 'Not acknowledged',
+      dimension: 'acknowledgement',
+      value: facts.acknowledgement,
       tone: facts.acknowledgement === 'acknowledged' ? 'good' : 'muted',
-      note: 'Explicit only. Reading cannot acknowledge.',
     },
-    {
-      dimension: 'Action attempt',
-      value: ACTION_LABEL[action],
-      tone: toneForAction(action),
-      note: 'Has its own approval and execution. An Agent may act on unread mail.',
-    },
+    { dimension: 'action', value: action, tone: toneForAction(action) },
   ];
-
   if (facts.delegation !== null) {
     views.push({
-      dimension: 'Delegation',
-      value: DELEGATION_LABEL[facts.delegation],
+      dimension: 'delegation',
+      value: facts.delegation,
       tone: facts.delegation === 'active' ? 'good' : facts.delegation === 'granted' ? 'progress' : 'bad',
-      note: 'Rechecked when an action starts. Expiry cannot undo a completed external effect.',
     });
   }
   return views;
+}
+
+/**
+ * Presentation is reported as an explicit per-device ratio, never as a single
+ * boolean: "read on one device" and "read on every device" are different facts
+ * and spec 0002 forbids conflating them.
+ */
+export function presentationToken(devices: readonly DeviceFacts[]): string {
+  const { read, presented, total } = presentationSummary(devices);
+  if (total === 0) return 'no-device-reported';
+  if (read === total) return `read:all-${total}`;
+  if (read > 0) return `read:${read}-of-${total}`;
+  if (presented > 0) return `presented:${presented}-of-${total}`;
+  return `unseen:0-of-${total}`;
 }
 
 export function riskTone(risk: Risk): Tone {
@@ -654,21 +749,26 @@ export function riskTone(risk: Risk): Tone {
   return 'neutral';
 }
 
-export function actionLabel(state: ActionState): string {
-  return ACTION_LABEL[state];
-}
-
 export function formatClock(timestamp: number, now: number): string {
   if (timestamp <= 0) return '—';
   const delta = now - timestamp;
   const minute = 60_000;
-  if (Math.abs(delta) < minute) return 'just now';
-  if (delta >= 0 && delta < 60 * minute) return `${Math.floor(delta / minute)}m ago`;
-  if (delta >= 0 && delta < 24 * 60 * minute) return `${Math.floor(delta / (60 * minute))}h ago`;
+  if (Math.abs(delta) < minute) return '刚刚';
+  if (delta >= 0 && delta < 60 * minute) return `${Math.floor(delta / minute)} 分钟前`;
+  if (delta >= 0 && delta < 24 * 60 * minute) return `${Math.floor(delta / (60 * minute))} 小时前`;
   if (delta < 0) {
     const ahead = Math.abs(delta);
-    if (ahead < 60 * minute) return `in ${Math.floor(ahead / minute)}m`;
-    return `in ${Math.floor(ahead / (60 * minute))}h`;
+    if (ahead < 60 * minute) return `${Math.floor(ahead / minute)} 分钟后`;
+    return `${Math.floor(ahead / (60 * minute))} 小时后`;
   }
-  return `${Math.floor(delta / (24 * 60 * minute))}d ago`;
+  return `${Math.floor(delta / (24 * 60 * minute))} 天前`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Local identity
+ * ------------------------------------------------------------------ */
+
+/** A per-browser device id, used so presentation facts stay per device. */
+export function deviceIdFor(seed: string): string {
+  return `device:web:${seed.slice(0, 8)}`;
 }

@@ -4,13 +4,13 @@ English | [中文](README.zh.md)
 
 Linko is an open-source, local-first collaboration mesh for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It helps agents find the right collaborator, exchange scoped context, and continue a task under explicit human-controlled policies.
 
-Linko is in the design phase. The repository is specification-driven: product boundaries, state transitions, delivery recovery, privacy rules, and architecture decisions are written before runtime code.
+Linko is an early runnable MVP. The repository remains specification-driven: product boundaries, state transitions, delivery recovery, privacy rules, and architecture decisions are written beside the runtime.
 
 ## Why Linko
 
 LAN messaging and approval panels are useful building blocks. Linko adds the part that becomes more useful with a person's own evidence and context:
 
-- Each person and Agent can keep a subjective, signed set of capability claims without creating a global reputation score.
+- Each person and Agent can keep a subjective set of capability claims; later releases may attach signatures without creating a global reputation score.
 - A task query can produce a local recommendation with evidence and an explanation.
 - Context is shared by scope and purpose instead of being broadcast as a complete private history.
 - A person can answer an inbound request, ask their Agent to draft a reply, or delegate a bounded response policy.
@@ -19,7 +19,7 @@ LAN messaging and approval panels are useful building blocks. Linko adds the par
 
 ## Project status
 
-The first local MVP is now runnable as two packages: a SQLite-backed node and an offline-first envelope inbox. It is a local state prototype; peer pairing, WebSocket hints, signatures, and E2EE remain later milestones.
+The MVP runs a SQLite-backed node and a human-first envelope inbox. It supports an explicit two-node HTTPS pairing profile with a durable outbox, pinned certificates, bearer authentication, retry-safe command IDs, and REST recovery. WebSocket hints, message signatures, and E2EE remain later milestones; this is not a 20,000-node capacity claim.
 
 - Product scope: [English](docs/specs/0001-product-scope.md) · [中文](docs/specs/0001-product-scope.zh.md)
 - Architecture: [English](docs/architecture.md) · [中文](docs/architecture.zh.md)
@@ -32,7 +32,7 @@ The first local MVP is now runnable as two packages: a SQLite-backed node and an
 
 ## Design direction
 
-The first physical store is one SQLite database behind one TypeScript node. Immutable signed events are durable facts; delivery attempts, read state, approvals, and notifications are local operational state. REST cursor pull is the recovery path. WebSocket is an optional wake-up hint. A graph can be materialized later as a view over claims; a graph database is not required.
+The first physical store is one SQLite database behind one TypeScript node. Immutable event content is durable; delivery attempts, read state, approvals, and notifications are local operational state. REST cursor pull is the recovery path. WebSocket is an optional wake-up hint. A graph can be materialized later as a view over claims; a graph database is not required.
 
 The network begins with ordinary IP, HTTPS over TCP, and optional WebSocket, using explicit pairing and optional mDNS hints. No router or switch feature is required. DHT, Merkle synchronization, full-mesh sockets, blockchain consensus, and Rust/WASM are parking-lot experiments that need a measured reason and a fallback test.
 

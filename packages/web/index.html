@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="zh-CN" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Linko inbox</title>
+    <title>Linko 收件箱</title>
     <meta
       name="description"
-      content="A local-first envelope inbox: covers first, independent delivery and reading facts, one deliberate decision at a time."
+      content="本地优先的信封收件箱：先看封面，事实互相独立，一次只做一个决定。"
     />
     <!--
       Nothing here loads from a network: no CDN, no webfont, no remote script.
@@ -33,29 +33,37 @@
     </script>
   </head>
   <body>
+    <a class="skip-link" href="#main-region">跳到主要内容 · Skip to content</a>
+
     <div class="app">
       <header class="masthead">
         <div class="wordmark">
-          <span class="wordmark__seal">联</span>
+          <span class="wordmark__seal" aria-hidden="true">联</span>
           <span class="wordmark__name">Linko</span>
-          <span class="wordmark__tag">envelope inbox</span>
+          <span class="wordmark__tag">信封收件箱 · envelope inbox</span>
         </div>
         <div class="masthead__controls" id="masthead-controls"></div>
-        <p class="keys">
-          <kbd>j</kbd><kbd>k</kbd> move · <kbd>n</kbd> next · <kbd>a</kbd> approve ·
-          <kbd>r</kbd> reject · <kbd>d</kbd> defer · <kbd>u</kbd> undo · <kbd>t</kbd> theme
-        </p>
       </header>
 
       <div id="banner-region"></div>
 
-      <main class="inbox" data-pane="list">
-        <section class="inbox__list" id="list-region" aria-label="Envelope covers"></section>
-        <section class="inbox__detail" id="detail-region" aria-label="Envelope detail"></section>
+      <main class="inbox" id="main-region" data-view="inbox">
+        <section class="inbox__list" id="list-region" aria-label="信封封面 · envelope covers"></section>
+        <section class="inbox__detail" id="detail-region" aria-label="信封详情 · envelope detail"></section>
       </main>
+
+      <section class="outbox-region" id="outbox-region" aria-label="发件箱 · outbox"></section>
     </div>
 
     <div id="live-region"></div>
+
+    <footer class="keys">
+      <span>
+        <kbd>j</kbd><kbd>k</kbd> 移动 · <kbd>n</kbd> 下一个待决 · <kbd>a</kbd> 批准 ·
+        <kbd>r</kbd> 拒绝 · <kbd>d</kbd> 搁置 · <kbd>m</kbd> 已读 · <kbd>c</kbd> 撰写 ·
+        <kbd>t</kbd> 主题
+      </span>
+    </footer>
 
     <script type="module" src="./app.js"></script>
   </body>

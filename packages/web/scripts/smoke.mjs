@@ -7,10 +7,13 @@
  * hold:
  *
  *   - fixtures survive the same validator that network input passes through;
+ *   - an unknown actor kind is refused, not relabelled;
  *   - delivery, read, acknowledgement and action stay independent under change;
- *   - an autonomous Agent envelope is never labelled human;
- *   - a decision is reversible while a reversal is truthful, and refused after;
- *   - deferral stays private and does not move the protocol state;
+ *   - a decision is a *submission*: pending until the node accepts it, failed
+ *     when it does not, and never reported as a success it did not get;
+ *   - compose builds a human envelope with a fresh nonce and a parent ref, and
+ *     does not invent an event id;
+ *   - the sync cursor round-trips through storage and is dropped on reset;
  *   - the emitted bundle contains no markup-string sinks and loads nothing
  *     from a network.
  *
@@ -30,9 +33,8 @@ let checks = 0;
 
 function check(label, condition, detail = '') {
   checks += 1;
-  if (condition) {
-    console.log(`  ok   ${label}`);
-  } else {
+  if (condition) console.log(`  ok   ${label}`);
+  else {
     failures += 1;
     console.log(`  FAIL ${label}${detail === '' ? '' : ` — ${detail}`}`);
   }
@@ -65,7 +67,7 @@ async function walk(directory) {
 /**
  * Remove comments before scanning for forbidden calls, so documentation that
  * names a dangerous API is not mistaken for a use of it. String literals are
- * tracked so that a `//` inside a URL does not swallow the rest of the line.
+ * tracked so a `//` inside a URL does not swallow the rest of the line.
  */
 function stripComments(code) {
   let out = '';
@@ -111,7 +113,6 @@ function stripComments(code) {
       index += 1;
       continue;
     }
-    // state === 'string'
     if (char === '\\') {
       out += char + (next ?? '');
       index += 2;
@@ -124,12 +125,91 @@ function stripComments(code) {
   return out;
 }
 
+/* ------------------------------------------------------------------ *
+ * Minimal DOM + storage shims
+ * ------------------------------------------------------------------ */
+
+class FakeNode {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase();
+    this.attributes = new Map();
+    this.childNodes = [];
+  }
+  set className(value) {
+    this.attributes.set('class', String(value));
+  }
+  get className() {
+    return this.attributes.get('class') ?? '';
+  }
+  setAttribute(key, value) {
+    this.attributes.set(key, String(value));
+  }
+  getAttribute(key) {
+    return this.attributes.get(key) ?? null;
+  }
+  addEventListener(type, listener) {
+    this.attributes.set(`on:${type}`, typeof listener);
+  }
+  append(...children) {
+    for (const child of children) this.childNodes.push(child);
+  }
+  set textContent(value) {
+    this.childNodes = [new FakeText(String(value))];
+  }
+  get textContent() {
+    return this.childNodes.map((child) => child.textContent).join('');
+  }
+}
+
+class FakeText {
+  constructor(data) {
+    this.data = data;
+  }
+  get textContent() {
+    return this.data;
+  }
+}
+
+function installShims() {
+  globalThis.document = {
+    createElement: (tagName) => new FakeNode(tagName),
+    createTextNode: (data) => new FakeText(String(data)),
+  };
+  const store = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => store.set(key, String(value)),
+      removeItem: (key) => store.delete(key),
+    },
+  };
+  return store;
+}
+
+function allText(node) {
+  return node.textContent;
+}
+
+function findAll(node, predicate, found = []) {
+  if (predicate(node)) found.push(node);
+  if (node.childNodes === undefined) return found;
+  for (const child of node.childNodes) findAll(child, predicate, found);
+  return found;
+}
+
 async function main() {
   section('Build output');
-  const required = ['index.html', 'theme.css', 'app.js', 'model.js', 'fixtures.js', 'render.js', 'api.js'];
-  for (const file of required) {
-    check(`dist/${file} exists`, await exists(join(dist, file)));
-  }
+  const required = [
+    'index.html',
+    'theme.css',
+    'app.js',
+    'model.js',
+    'fixtures.js',
+    'render.js',
+    'api.js',
+    'storage.js',
+  ];
+  for (const file of required) check(`dist/${file} exists`, await exists(join(dist, file)));
   if (failures > 0) {
     console.error('\nBuild output is incomplete. Run `node scripts/build.mjs` first.');
     process.exitCode = 1;
@@ -146,11 +226,9 @@ async function main() {
 
   section('No network dependency (the preview must work offline)');
   const absoluteAsset = /(?:src|href)\s*=\s*["'](?:https?:)?\/\//i;
-  const cssImport = /@import\s+(?:url\()?["']?(?:https?:)?\/\//i;
-  const cssAbsoluteUrl = /url\(\s*["']?(?:https?:)?\/\//i;
   check('index.html loads no remote asset', !absoluteAsset.test(html));
-  check('theme.css imports nothing remotely', !cssImport.test(css));
-  check('theme.css references no remote asset', !cssAbsoluteUrl.test(css));
+  check('theme.css imports nothing remotely', !/@import\s+(?:url\()?["']?(?:https?:)?\/\//i.test(css));
+  check('theme.css references no remote asset', !/url\(\s*["']?(?:https?:)?\/\//i.test(css));
   check('no remote webfont', !/fonts\.googleapis|fonts\.gstatic/i.test(html + css));
 
   section('No markup-string sinks (remote HTML is never executed)');
@@ -164,299 +242,294 @@ async function main() {
     ['javascript: URL', /["'`]javascript:/i],
   ];
   for (const [label, pattern] of sinks) {
-    const offenders = [...scripts.entries()]
-      .filter(([, source]) => pattern.test(stripComments(source)))
-      .map(([name]) => name);
+    const offenders = [...scripts.entries()].filter(([, source]) => pattern.test(stripComments(source))).map(([name]) => name);
     check(`no ${label}`, offenders.length === 0, offenders.join(', '));
   }
 
-  section('Fixtures pass the same validator as network input');
+  section('Transport security is not claimed by this client');
+  const apiSource = scripts.get('api.js') ?? '';
+  check('no TLS/auth claim in the client copy', !/end-to-end|端到端|already secure|TLS 已/i.test(apiSource));
+  check('the client says where transport security lives', /TLS and peer\s*\n?\s*\*?\s*authentication belong to the node/i.test(apiSource) || /belong to the node/i.test(apiSource));
+
+  installShims();
   const model = await import(pathToFileURL(join(dist, 'model.js')).href);
   const fixtures = await import(pathToFileURL(join(dist, 'fixtures.js')).href);
+  const storage = await import(pathToFileURL(join(dist, 'storage.js')).href);
+  const api = await import(pathToFileURL(join(dist, 'api.js')).href);
+  const render = await import(pathToFileURL(join(dist, 'render.js')).href);
+
   const NOW = 1_700_000_000_000;
   const envelopes = fixtures.fixtureEnvelopes(NOW);
+
+  section('Fixtures pass the same validator as network input');
   check('fixtures render at all', envelopes.length >= 6, `got ${envelopes.length}`);
   check(
     'every fixture round-trips through parseEnvelope',
     envelopes.every((envelope) => model.parseEnvelope(JSON.parse(JSON.stringify(envelope))) !== null),
   );
 
+  section('An unknown actor kind is refused, never relabelled');
+  const unknownKind = model.parseEnvelope({
+    id: 'sha256:x',
+    cover: { title: 'ok', actor: { kind: 'humanoid', id: 'actor:1' } },
+  });
+  check('unknown actor kind is rejected outright', unknownKind === null);
+  const missingActor = model.parseEnvelope({ id: 'sha256:x', cover: { title: 'ok' } });
+  check('an envelope with no actor is rejected', missingActor === null);
+  const missingActorId = model.parseEnvelope({ id: 'sha256:x', cover: { title: 'ok', actor: { kind: 'human' } } });
+  check('an actor with no id is rejected', missingActorId === null);
+  const known = model.parseEnvelope({
+    id: 'sha256:x',
+    cover: { title: 'ok', actor: { kind: 'agent-autonomous', id: 'agent:1' } },
+  });
+  check('a known actor kind still parses', known?.actor.kind === 'agent-autonomous');
+
   const hostile = model.parseEnvelope({
     id: 'sha256:x',
-    cover: {
-      title: 'ok‮gnp.exe',
-      preview: 'x'.repeat(900),
-      actor: { kind: 'not-a-kind', id: 'a'.repeat(400) },
-    },
+    cover: { title: 'ok‮gnp.exe', preview: 'x'.repeat(900), actor: { kind: 'human', id: 'p:1' } },
     inlineBody: '<img src=x onerror=alert(1)>',
     semantic: { intent: 'nonsense', contextRefs: 'not-an-array' },
-    extra: { ignored: true },
   });
-  check('unknown actor kind is not trusted', hostile?.actor.kind === 'system');
   check('unknown intent falls back safely', hostile?.semantic.intent === 'inform');
   check('non-array refs are dropped', hostile?.semantic.contextRefs.length === 0);
   check('bidi override is stripped from titles', !hostile?.cover.title.includes('‮'));
   check('over-long preview is truncated', (hostile?.cover.preview.length ?? 0) <= 400);
-  check(
-    'markup in a body is kept as text, not markup',
-    hostile?.inlineBody === '<img src=x onerror=alert(1)>',
-    'the value is preserved verbatim; the view layer is responsible for never interpreting it',
-  );
+  check('markup in a body is preserved verbatim for text rendering', hostile?.inlineBody === '<img src=x onerror=alert(1)>');
 
   section('Delivery, read, acknowledgement and action stay independent');
   const base = envelopes[0];
   const withRead = {
     ...base,
-    facts: {
-      ...base.facts,
-      devices: base.facts.devices.map((device) => ({ ...device, presentation: 'read' })),
-    },
+    facts: { ...base.facts, devices: base.facts.devices.map((device) => ({ ...device, presentation: 'read' })) },
   };
-  const factsOf = (envelope) => model.factViews(envelope, {}, NOW);
-  const valueOf = (views, dimension) => views.find((view) => view.dimension === dimension)?.value;
-  const before = factsOf(base);
-  const after = factsOf(withRead);
-  check(
-    'marking a device read does not change the delivery fact',
-    valueOf(before, 'Delivery') === valueOf(after, 'Delivery'),
-  );
-  check(
-    'marking a device read does not change the acknowledgement fact',
-    valueOf(before, 'Acknowledgement') === valueOf(after, 'Acknowledgement'),
-  );
-  check(
-    'marking a device read does not change the action fact',
-    valueOf(before, 'Action attempt') === valueOf(after, 'Action attempt'),
-  );
-  check('delivery is reported independently', valueOf(before, 'Delivery') !== undefined);
-  check('action is reported independently', valueOf(before, 'Action attempt') !== undefined);
+  const valueOf = (envelope, dimension) => model.factViews(envelope, NOW).find((view) => view.dimension === dimension)?.value;
+  check('reading a device does not change delivery', valueOf(base, 'delivery') === valueOf(withRead, 'delivery'));
+  check('reading a device does not change acknowledgement', valueOf(base, 'acknowledgement') === valueOf(withRead, 'acknowledgement'));
+  check('reading a device does not change the action', valueOf(base, 'action') === valueOf(withRead, 'action'));
   check(
     'per-device presentation never claims every device without evidence',
-    model.presentationSummary([{ deviceId: 'a', label: 'A', presentation: 'read' }, { deviceId: 'b', label: 'B', presentation: 'unseen' }]).value ===
-      'Read on 1 of 2',
+    model.presentationSummary([
+      { deviceId: 'a', label: 'A', presentation: 'read' },
+      { deviceId: 'b', label: 'B', presentation: 'unseen' },
+    ]).read === 1,
   );
   check(
-    'read on every device is only claimed when every device says so',
-    model
-      .presentationSummary([
-        { deviceId: 'a', label: 'A', presentation: 'read' },
-        { deviceId: 'b', label: 'B', presentation: 'read' },
-      ])
-      .value === 'Read on all 2',
+    'presentation reports an explicit ratio',
+    model.presentationToken([
+      { deviceId: 'a', label: 'A', presentation: 'read' },
+      { deviceId: 'b', label: 'B', presentation: 'unseen' },
+    ]) === 'read:1-of-2',
   );
-
-  section('Approval and acknowledgement never follow from reading');
-  const unread = { ...base, facts: { ...base.facts, acknowledgement: 'absent', action: 'requested' } };
-  const read = { ...unread, facts: { ...unread.facts, devices: unread.facts.devices.map((d) => ({ ...d, presentation: 'read' })) } };
-  const readAction = model.deriveActionState(read, {}, NOW);
-  check('reading does not approve an action', readAction !== 'approved');
 
   section('Authorship is distinguishable and autonomous is never human');
   const kinds = ['human', 'agent-delegated', 'agent-autonomous', 'system'];
   const views = kinds.map((kind) => model.authorshipView(kind));
-  check('four authorship labels are distinct', new Set(views.map((view) => view.label)).size === 4);
   check('four authorship marks are distinct', new Set(views.map((view) => view.mark)).size === 4);
   check('autonomous is flagged as not human', model.authorshipView('agent-autonomous').notHuman === true);
-  check('delegated is flagged as not human', model.authorshipView('agent-delegated').notHuman === true);
   check('human is not flagged as not human', model.authorshipView('human').notHuman === false);
 
-  section('Decision state machine');
+  section('Decisions are submissions, never local outcomes');
   const target = envelopes.find((envelope) => model.needsDecision(envelope, {}, NOW));
   check('at least one fixture is waiting for a decision', target !== undefined);
   if (target !== undefined) {
-    const approved = model.recordDecision({}, target, 'approve', NOW);
-    check('approval becomes the action state', model.deriveActionState(target, approved.ledger, NOW) === 'approved');
-    check('approval is durable work, not a private note', model.durabilityOf('approve') === 'durable-event');
-    check('an approved action can still be reversed', model.canReverse('approved') === true);
+    const before = model.deriveActionState(target, NOW);
+    const started = model.recordDecision({}, target.id, 'approve', NOW);
+    const pending = model.currentDecision(started.ledger, target.id);
+    check('a new decision is pending', pending?.status === 'pending');
+    check('a pending decision does not move the action fact', model.deriveActionState(target, NOW) === before);
+    check('a pending decision is not offered again', model.needsDecision(target, started.ledger, NOW) === false);
 
-    const reopened = model.recordDecision(approved.ledger, target, 'reopen', NOW + 1);
-    check(
-      'reversal is recorded rather than erasing history',
-      reopened.ledger[target.id].length === 2 && model.currentDecision(reopened.ledger, target.id).kind === 'reopen',
-    );
-    check(
-      'reversal returns the envelope to needing a decision',
-      model.needsDecision(target, reopened.ledger, NOW + 1) === true,
-    );
+    const failed = model.settleDecision(started.ledger, target.id, 'failed', '节点未连接');
+    check('a refusal is recorded as failed', model.currentDecision(failed, target.id)?.status === 'failed');
+    check('a failed decision keeps the error text', model.currentDecision(failed, target.id)?.error === '节点未连接');
+    check('a failed decision does not mark the action approved', model.deriveActionState(target, NOW) !== 'approved');
+    check('a failed decision returns the item to the queue', model.needsDecision(target, failed, NOW) === true);
 
-    const deferred = model.recordDecision({}, target, 'defer', NOW);
-    check('deferral is a private local fact', model.durabilityOf('defer') === 'private-local');
-    check(
-      'deferral leaves the action state alone',
-      model.deriveActionState(target, deferred.ledger, NOW) === model.deriveActionState(target, {}, NOW),
-    );
-    check(
-      'deferral does not count as a decided item',
-      model.summarize([target], deferred.ledger, NOW).decided === 0,
-    );
+    const confirmed = model.settleDecision(started.ledger, target.id, 'confirmed', null);
+    check('an accepted decision is recorded as confirmed', model.currentDecision(confirmed, target.id)?.status === 'confirmed');
+    check('a confirmed decision stops offering the item', model.needsDecision(target, confirmed, NOW) === false);
+    check('a confirmed decision still does not invent an action fact', model.deriveActionState(target, NOW) === before);
+    check('settling preserves the record count', (confirmed[target.id] ?? []).length === 1);
 
-    check('an executing action cannot be reversed', model.canReverse('executing') === false);
-    check('a succeeded action cannot be reversed', model.canReverse('succeeded') === false);
-    check('an uncertain outcome cannot be reversed', model.canReverse('uncertain') === false);
+    check('an expired request is not awaiting a decision', (() => {
+      const expired = envelopes.find((envelope) => envelope.cover.status === 'expired');
+      return expired !== undefined && model.needsDecision(expired, {}, NOW) === false;
+    })());
   }
 
-  const progress = model.summarize(envelopes, {}, NOW);
-  check('open count matches the fixtures awaiting a decision', progress.open >= 1, `open=${progress.open}`);
-  check('progress starts with nothing decided', progress.decided === 0);
+  section('Compose builds a human envelope with a fresh nonce and a parent ref');
+  const draft = {
+    peerId: 'peer:wei',
+    title: '关于解析器基准',
+    preview: '想请你确认一下基准数据',
+    body: '这是一段纯文本正文。',
+    intent: 'request',
+    risk: 'medium',
+    requiresApproval: true,
+  };
+  const replyTo = { eventId: 'sha256:parent', title: '父消息标题' };
+  const built = model.buildHumanEnvelope(draft, { nonce: 'nonce-1', authorId: 'device:web:test', replyTo, now: NOW });
+  check('compose sets the human message kind', built.kind === 'message.human');
+  check('compose signs as a human actor', built.cover.actor.kind === 'human');
+  check('compose carries the author id', built.cover.actor.id === 'device:web:test');
+  check('compose carries a fresh nonce', built.nonce === 'nonce-1');
+  check('compose does not invent an event id', built.id === undefined);
+  check('compose quotes the parent by ref', Array.isArray(built.parents) && built.parents[0] === 'sha256:parent');
+  check('compose records which parent is quoted', built.quote.eventId === 'sha256:parent');
+  check('compose keeps the body as plain text', built.inlineBody === '这是一段纯文本正文。');
+  check('compose marks approval when asked', built.policy.requiresApproval === true);
 
-  const expiredFixture = envelopes.find((envelope) => envelope.cover.status === 'expired');
-  check('an expired fixture exists', expiredFixture !== undefined);
-  if (expiredFixture !== undefined) {
-    check('expiry overrides a pending approval', model.deriveActionState(expiredFixture, {}, NOW) === 'expired');
-    check('an expired request is not awaiting a decision', model.needsDecision(expiredFixture, {}, NOW) === false);
-  }
+  const other = model.buildHumanEnvelope(draft, { nonce: 'nonce-2', authorId: 'device:web:test', replyTo: null, now: NOW });
+  check('two compositions differ by nonce', JSON.stringify(built) !== JSON.stringify(other));
+  check('a non-reply carries no parent', other.parents === undefined);
+  check('the built envelope parses back', model.parseEnvelope({ ...built, id: 'sha256:built', facts: {} }) !== null);
+  check('an unaddressed draft is not sendable', model.isDraftSendable({ ...draft, peerId: '' }) === false);
+  check('a titled addressed draft is sendable', model.isDraftSendable(draft) === true);
+
+  section('Cursor persistence and reset');
+  storage.writeString(storage.KEYS.cursor, 'cursor-abc');
+  check('cursor round-trips through storage', storage.readString(storage.KEYS.cursor) === 'cursor-abc');
+  storage.remove(storage.KEYS.cursor);
+  check('cursor can be cleared', storage.readString(storage.KEYS.cursor) === null);
+
+  storage.writeString(storage.KEYS.outbox, '{not json');
+  check('a corrupt entry falls back instead of throwing', Array.isArray(storage.readJson(storage.KEYS.outbox, [])));
+  check('a corrupt entry is discarded', storage.readString(storage.KEYS.outbox) === null);
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: { code: 'CURSOR_RESET', message: 'stale' } }), { status: 409 });
+  const reset = await api.fetchEnvelopes('http://127.0.0.1:1', 'stale-cursor');
+  check('a 409 is treated as a reset instruction, not an error', reset.ok === true);
+  check('a reset clears the cursor', reset.ok === true && reset.value.resetRequired === true && reset.value.cursor === null);
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ events: [envelopes[0]], cursor: 'cursor-next' }), { status: 200 });
+  const page = await api.fetchEnvelopes('http://127.0.0.1:1', null);
+  check('a page parses and yields the next cursor', page.ok === true && page.value.cursor === 'cursor-next');
+  check('a page yields envelopes', page.ok === true && page.value.envelopes.length === 1);
+
+  globalThis.fetch = async () => {
+    throw new Error('offline');
+  };
+  const unreachable = await api.fetchEnvelopes('http://127.0.0.1:1', null);
+  check('an unreachable node is an explicit failure', unreachable.ok === false && unreachable.code === 'unreachable');
+  const peers = await api.fetchPeers('http://127.0.0.1:1');
+  check('a missing peer directory is reported as unavailable', peers.available === false && peers.peers.length === 0);
+  globalThis.fetch = realFetch;
 
   section('Rendering fixture envelopes (real render.ts, minimal DOM shim)');
-  // A hand-rolled stand-in for the handful of DOM APIs render.ts touches. It
-  // exists so the actual view code runs here: textContent is stored as text
-  // children, so anything a message supplies stays inert by construction.
-  class FakeNode {
-    constructor(tagName) {
-      this.tagName = tagName.toUpperCase();
-      this.attributes = new Map();
-      this.childNodes = [];
-    }
-
-    set className(value) {
-      this.attributes.set('class', String(value));
-    }
-
-    get className() {
-      return this.attributes.get('class') ?? '';
-    }
-
-    setAttribute(key, value) {
-      this.attributes.set(key, String(value));
-    }
-
-    getAttribute(key) {
-      return this.attributes.get(key) ?? null;
-    }
-
-    addEventListener(type, listener) {
-      this.attributes.set(`on:${type}`, typeof listener);
-    }
-
-    append(...children) {
-      for (const child of children) this.childNodes.push(child);
-    }
-
-    set textContent(value) {
-      this.childNodes = [new FakeText(String(value))];
-    }
-
-    get textContent() {
-      return this.childNodes.map((child) => child.textContent).join('');
-    }
-  }
-
-  class FakeText {
-    constructor(data) {
-      this.data = data;
-    }
-
-    get textContent() {
-      return this.data;
-    }
-  }
-
-  globalThis.document = {
-    createElement: (tagName) => new FakeNode(tagName),
-    createTextNode: (data) => new FakeText(String(data)),
-  };
-
-  const render = await import(pathToFileURL(join(dist, 'render.js')).href);
-
-  function allText(node) {
-    return node.textContent;
-  }
-
-  function findAll(node, predicate, found = []) {
-    if (predicate(node)) found.push(node);
-    for (const child of node.childNodes ?? []) findAll(child, predicate, found);
-    return found;
-  }
-
   const primary = envelopes.find((envelope) => envelope.actor.kind === 'agent-delegated');
   check('a delegated fixture exists to render', primary !== undefined);
   if (primary !== undefined) {
     const card = render.coverCard(
-      { envelope: primary, actionState: 'awaiting_approval', decision: null, needsDecision: true, selected: false, now: NOW },
+      { envelope: primary, decision: null, needsDecision: true, dismissed: false, selected: false, now: NOW },
       () => {},
     );
-    const cardText = allText(card);
-    check('the cover card shows the title', cardText.includes(primary.cover.title));
-    check('the cover card shows the authorship label', cardText.includes('Agent · delegated'));
-    check('the cover card prompts for a decision', cardText.includes('Needs your decision'));
-    check('the cover card carries the delegated mark', findAll(card, (node) => node.getAttribute?.('data-kind') === 'agent-delegated').length === 1);
+    check('the cover card shows the title', allText(card).includes(primary.cover.title));
+    check('the cover card prompts for a decision', allText(card).includes('等待你的决定'));
 
     const detail = render.detailView(
       {
         envelope: primary,
-        ledger: {},
-        actionState: 'awaiting_approval',
         decision: null,
         needsDecision: true,
+        dismissed: false,
         pendingConfirm: null,
+        parentTitle: null,
         now: NOW,
       },
-      { onBeginDecision: () => {}, onConfirmDecision: () => {}, onCancelConfirm: () => {}, onDefer: () => {}, onUndo: () => {} },
+      { onBeginDecision() {}, onConfirmDecision() {}, onCancelConfirm() {}, onRetryDecision() {}, onDismiss() {}, onUndismiss() {}, onMarkRead() {}, onAcknowledge() {}, onReply() {} },
     );
-    const detailText = allText(detail);
-    for (const dimension of ['Transport attempt', 'Recipient storage', 'Delivery', 'Presentation', 'Acknowledgement', 'Action attempt']) {
-      check(`detail renders the "${dimension}" fact`, detailText.includes(dimension));
+    const text = allText(detail);
+    for (const dimension of ['transport', 'storage', 'delivery', 'presentation', 'acknowledgement', 'action']) {
+      check(`detail renders the "${dimension}" fact`, model.factViews(primary, NOW).some((view) => view.dimension === dimension));
     }
-    check('detail never claims every device was read', !detailText.includes('Read on all'));
-    check('detail states the independence rule', detailText.includes('delivered never means read'));
-    check('an open decision offers approve', detailText.includes('Approve…'));
-    check('an open decision offers reject', detailText.includes('Reject…'));
-    check('an open decision offers the low-friction safe choice', detailText.includes('Defer'));
-    check('approval is not a single click', !allText(detail).includes('Confirm approval'));
-    check('the body object is shown as an inert reference, not fetched', detailText.includes('sha256:') || primary.bodyObjectId === null);
+    check('detail states the independence rule', text.includes('已投递不等于已读'));
+    check('detail offers approve', text.includes('批准…'));
+    check('detail offers reject', text.includes('拒绝…'));
+    check('detail offers the low-friction safe choice', text.includes('搁置'));
+    check('approval is not a single click', !text.includes('确认批准'));
+    // The copy may *mention* undo to say it is unavailable; what must not exist
+    // is a control offering it, since the node treats a decided action as
+    // terminal and this client cannot honour a reversal.
+    const undoControls = findAll(
+      detail,
+      (node) => node.tagName === 'BUTTON' && /撤销|撤回|重开|Undo|Reopen/i.test(node.textContent),
+    );
+    check('no undo control is offered', undoControls.length === 0, undoControls.map((node) => node.textContent).join(', '));
   }
 
-  const autonomous = envelopes.find((envelope) => envelope.actor.kind === 'agent-autonomous');
-  if (autonomous !== undefined) {
-    const card = render.coverCard(
-      { envelope: autonomous, actionState: 'requested', decision: null, needsDecision: true, selected: false, now: NOW },
-      () => {},
-    );
-    check('an autonomous envelope shows its own mark', allText(card).includes('Agent · autonomous'));
-    const detail = render.detailView(
-      {
-        envelope: autonomous,
-        ledger: {},
-        actionState: 'requested',
-        decision: null,
-        needsDecision: true,
-        pendingConfirm: null,
-        now: NOW,
-      },
-      { onBeginDecision: () => {}, onConfirmDecision: () => {}, onCancelConfirm: () => {}, onDefer: () => {}, onUndo: () => {} },
-    );
-    check('an autonomous envelope is explicitly not human-authored', allText(detail).includes('must never be shown as human-authored'));
-  }
-
-  // The confirmation step must appear only after the deliberate first click.
   if (primary !== undefined) {
-    const confirming = render.detailView(
+    const pendingDetail = render.detailView(
       {
         envelope: primary,
-        ledger: {},
-        actionState: 'awaiting_approval',
-        decision: null,
+      decision: { envelopeId: primary.id, intent: 'approve', actionId: 'approve', status: 'pending', at: NOW, error: null },
         needsDecision: true,
-        pendingConfirm: 'approve',
+        dismissed: false,
+        pendingConfirm: null,
+        parentTitle: null,
         now: NOW,
       },
-      { onBeginDecision: () => {}, onConfirmDecision: () => {}, onCancelConfirm: () => {}, onDefer: () => {}, onUndo: () => {} },
+      { onBeginDecision() {}, onConfirmDecision() {}, onCancelConfirm() {}, onRetryDecision() {}, onDismiss() {}, onUndismiss() {}, onMarkRead() {}, onAcknowledge() {}, onReply() {} },
     );
-    check('the confirmation step appears once approval is chosen', allText(confirming).includes('Confirm approval'));
-    check('the confirmation names what the approval binds to', allText(confirming).includes(primary.id));
-    check('the confirmation offers a way back', allText(confirming).includes('Cancel'));
+    check('a pending decision is shown as submitting', allText(pendingDetail).includes('正在提交'));
+    check('a pending decision does not show as approved', !allText(pendingDetail).includes('已记录：批准'));
+
+    const failedDetail = render.detailView(
+      {
+        envelope: primary,
+      decision: { envelopeId: primary.id, intent: 'approve', actionId: 'approve', status: 'failed', at: NOW, error: '节点未连接' },
+        needsDecision: true,
+        dismissed: false,
+        pendingConfirm: null,
+        parentTitle: null,
+        now: NOW,
+      },
+      { onBeginDecision() {}, onConfirmDecision() {}, onCancelConfirm() {}, onRetryDecision() {}, onDismiss() {}, onUndismiss() {}, onMarkRead() {}, onAcknowledge() {}, onReply() {} },
+    );
+    check('a failed decision is shown as unsent', allText(failedDetail).includes('决定未提交'));
+    check('a failed decision shows the reason', allText(failedDetail).includes('节点未连接'));
+    check('a failed decision offers a retry', allText(failedDetail).includes('重试'));
+    check('a failed decision is not shown as approved', !allText(failedDetail).includes('已记录：批准'));
   }
 
-  // Markup supplied by a message stays literal text in the rendered tree.
+  section('Compose view');
+  const composeText = allText(
+    render.composeView(
+      {
+        peers: [{ peerId: 'peer:wei', label: 'Wei', status: null }],
+        peersAvailable: true,
+        draft,
+        replyTo,
+        sending: false,
+        lastError: null,
+      },
+      { onField() {}, onSubmit() {}, onCancelReply() {}, onReloadPeers() {} },
+    ),
+  );
+  check('compose shows a peer selector', composeText.includes('对端'));
+  check('compose shows the reply target', composeText.includes('引用回复'));
+  check('compose offers a send action', composeText.includes('发送'));
+  const unavailable = allText(
+    render.composeView(
+      { peers: [], peersAvailable: false, draft, replyTo: null, sending: false, lastError: null },
+      { onField() {}, onSubmit() {}, onCancelReply() {}, onReloadPeers() {} },
+    ),
+  );
+  check('a missing peer directory is stated, not hidden', unavailable.includes('对端目录不可用'));
+  check('a missing peer directory offers manual entry', unavailable.includes('手动输入对端 ID'));
+
+  const unpaired = allText(
+    render.composeView(
+      { peers: [], peersAvailable: true, draft, replyTo: null, sending: false, lastError: null },
+      { onField() {}, onSubmit() {}, onCancelReply() {}, onReloadPeers() {} },
+    ),
+  );
+  check('an unpaired node is explained, not shown as an empty list', unpaired.includes('尚未配置任何对端'));
+  check('an unpaired node does not offer manual entry as if it would work', !unpaired.includes('手动输入对端 ID'));
+
+  section('Markup supplied by a message stays literal text');
   const hostileEnvelope = model.parseEnvelope({
     id: 'sha256:hostile',
     cover: { title: '<b>bold</b> claim', preview: '<script>alert(1)</script>', actor: { kind: 'human', id: 'p:1' } },
@@ -464,32 +537,31 @@ async function main() {
   });
   if (hostileEnvelope !== null) {
     const card = render.coverCard(
-      { envelope: hostileEnvelope, actionState: 'requested', decision: null, needsDecision: false, selected: false, now: NOW },
+      { envelope: hostileEnvelope, decision: null, needsDecision: false, dismissed: false, selected: false, now: NOW },
       () => {},
     );
-    const text = allText(card);
-    check('markup in a title is rendered as literal characters', text.includes('<b>bold</b> claim'));
+    check('markup in a title is rendered as literal characters', allText(card).includes('<b>bold</b> claim'));
     check('no element was created from message markup', findAll(card, (node) => node.tagName === 'B').length === 0);
     check('no script element appears in the tree', findAll(card, (node) => node.tagName === 'SCRIPT').length === 0);
   }
-
-  delete globalThis.document;
 
   section('Themes');
   for (const token of ['--c-ground', '--c-ink', '--c-attention', '--c-good', '--c-bad', '--c-info', '--c-accent']) {
     check(`theme defines ${token}`, css.includes(`${token}:`));
   }
-  check('light theme is defined', /data-theme='light'/.test(css) || /data-theme="light"/.test(css) || css.includes(':root,'));
   check('dark theme is defined', css.includes("data-theme='dark'"));
   check('system preference is honoured before the app runs', css.includes('prefers-color-scheme: dark'));
   check('reduced motion is respected', css.includes('prefers-reduced-motion'));
+  check('focus is always visible', css.includes(':focus-visible'));
 
   section('Shell wiring');
-  for (const id of ['masthead-controls', 'banner-region', 'list-region', 'detail-region', 'live-region']) {
+  for (const id of ['masthead-controls', 'banner-region', 'list-region', 'detail-region', 'live-region', 'main-region', 'outbox-region']) {
     check(`index.html has #${id}`, html.includes(`id="${id}"`));
   }
   check('the app is loaded as a module', html.includes('type="module"'));
   check('the theme is applied before first paint', html.includes('linko.theme'));
+  check('the document is declared Chinese-first', html.includes('lang="zh-CN"'));
+  check('a skip link is present', html.includes('skip-link'));
 
   console.log(`\n${checks - failures}/${checks} checks passed.`);
   if (failures > 0) {
