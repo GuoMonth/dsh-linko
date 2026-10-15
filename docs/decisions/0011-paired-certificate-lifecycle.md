@@ -16,7 +16,7 @@ The same TLS certificate protects the paired HTTPS listener and its future paire
 
 The sender checks both the configured fingerprint and the peer certificate's `notBefore`/`notAfter` window before writing a request body. An expired or not-yet-valid certificate produces a retryable unavailable state; it cannot be reported as delivered. Clock skew is an operational error and must be visible.
 
-The initial local profile uses a long-lived leaf to keep manual pairing manageable, with an expiry warning at 30, 7, and 1 day. Renewal creates a new key and certificate, so its fingerprint changes. The owner must update the peer pin or complete an explicit re-pair before delivery resumes. Renewal is atomic at the configuration boundary: keep the old configuration until the new pin has been verified on both sides.
+The initial local profile uses a long-lived leaf to keep manual pairing manageable. The planned expiry warnings are 30, 7, and 1 day; the renewal command and UI warning are not yet implemented. Renewal creates a new key and certificate, so its fingerprint changes. The owner must update the peer pin or complete an explicit re-pair before delivery resumes. Renewal is atomic at the configuration boundary: keep the old configuration until the new pin has been verified on both sides.
 
 ## Scale boundary
 
