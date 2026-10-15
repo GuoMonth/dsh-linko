@@ -31,7 +31,8 @@ const paired = [
   'docs/decisions/0007-group-chat-and-e2ee-boundary.md',
   'docs/decisions/0008-minimal-kernel-and-verification.md',
   'docs/decisions/0009-deterministic-group-membership-reducer.md',
-  'docs/decisions/0010-wss-live-session-and-recovery.md'
+  'docs/decisions/0010-wss-live-session-and-recovery.md',
+  'docs/decisions/0011-paired-certificate-lifecycle.md'
 ];
 
 const missing = [];

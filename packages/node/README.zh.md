@@ -55,6 +55,8 @@ LINKO_TLS_KEY=.linko/node-a.key LINKO_TLS_CERT=.linko/node-a.crt \
 LINKO_PORT=8787 LINKO_PEER_PORT=8788 pnpm node:start
 ```
 
+示例证书是自签名的，密钥由操作系统密码学随机源生成，绝不会由节点 ID 或地址推导。Linko 会固定配置的 SHA-256 指纹，并在发送请求正文前检查 `notBefore`/`notAfter`。过期或尚未生效的证书会被视为不可用并重试，绝不会报告为已送达。MVP 的续期方式是生成新的密钥和证书，通过带外方式比较新指纹，在两端更新 `certSha256`，然后重启或显式重新配对。不要静默接受变化后的指纹。更大的可信局域网以后可以引入本地或组织 CA，实现叶子证书自动轮换。
+
 `GET /v1/peers` 只返回 `peerId` 和 `label`。`POST /v1/send` 接受 `{peerId,envelope,clientId,commandId}`，在一个事务中写入本地副本和 outbox，使用有界指数退避最多重试同一个事件 ID 八次，并在重启后继续命令去重。预算耗尽的项目会显示为 `abandoned`；显式使用新的 command 可以让同一事件重新排队。`GET /v1/outbox` 返回投递状态和尝试次数。接收方只接受经过认证的 HTTPS Peer 入口；该监听器不会暴露本地管理 API。
 
 ## MVP 契约

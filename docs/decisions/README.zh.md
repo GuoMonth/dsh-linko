@@ -14,3 +14,4 @@
 - [0008 最小内核与验证边界](0008-minimal-kernel-and-verification.zh.md)
 - [0009 确定性群组成员 Reducer](0009-deterministic-group-membership-reducer.zh.md)
 - [0010 WSS 在线实时会话与持久恢复](0010-wss-live-session-and-recovery.zh.md)
+- [0011 配对证书生命周期](0011-paired-certificate-lifecycle.zh.md)

@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { request as httpsRequest, createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
+import type { PeerCertificate } from "node:tls";
 import { NodeStore, StoreError, type NodeStoreOptions, type PendingOutbox } from "./store.js";
 import { LiveHub } from "./live.js";
 
@@ -120,6 +121,16 @@ async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore
 function jsonBody(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : (() => { throw new StoreError("INVALID_INPUT", "request body must be a JSON object"); })(); }
 
 function normalizeFingerprint(value: string): string { return value.replaceAll(":", "").replaceAll(" ", "").toLowerCase(); }
+/**
+ * Fingerprint pinning identifies the configured peer; it does not replace the
+ * certificate validity window. Keep this check explicit because the local
+ * profile intentionally disables the system CA check for self-signed leaves.
+ */
+export function isPeerCertificateValid(cert: Pick<PeerCertificate, "valid_from" | "valid_to">, now = Date.now()): boolean {
+  const validFrom = Date.parse(cert.valid_from ?? "");
+  const validTo = Date.parse(cert.valid_to ?? "");
+  return Number.isFinite(validFrom) && Number.isFinite(validTo) && validFrom <= now && now <= validTo;
+}
 async function deliver(pending: PendingOutbox, store: NodeStore): Promise<void> {
   const item = store.markSending(pending.item.eventId); const peer = pending.peer; const endpoint = new URL(peer.endpoint);
   endpoint.pathname = `${endpoint.pathname.replace(/\/$/, "")}/v1/peer/events`;
@@ -135,6 +146,10 @@ async function deliver(pending: PendingOutbox, store: NodeStore): Promise<void> 
     });
     req.on("socket", (socket) => socket.once("secureConnect", () => {
       const cert = (socket as import("node:tls").TLSSocket).getPeerCertificate();
+      if (!isPeerCertificateValid(cert)) {
+        req.destroy(new Error("peer certificate is expired or not yet valid"));
+        return;
+      }
       if (normalizeFingerprint(String(cert.fingerprint256 ?? "")) !== normalizeFingerprint(peer.certSha256)) {
         req.destroy(new Error("peer certificate fingerprint mismatch"));
         return;

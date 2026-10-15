@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { X509Certificate } from 'node:crypto';
 import { WebSocket } from 'ws';
-import { createNodeServer, createPeerServer } from './dist/server.js';
+import { createNodeServer, createPeerServer, isPeerCertificateValid } from './dist/server.js';
 import { NodeStore } from './dist/store.js';
 import { LIVE_LIMITS } from './dist/live.js';
 
@@ -170,6 +170,10 @@ try {
 
   // Real paired HTTPS ingress shares the receiver store, and sender delivery
   // results happen in the background, outside local HTTP mutation handlers.
+  const now = Date.now();
+  assert.equal(isPeerCertificateValid({ valid_from: new Date(now - 1000).toISOString(), valid_to: new Date(now + 1000).toISOString() }, now), true);
+  assert.equal(isPeerCertificateValid({ valid_from: new Date(now - 2000).toISOString(), valid_to: new Date(now - 1000).toISOString() }, now), false);
+  assert.equal(isPeerCertificateValid({ valid_from: new Date(now + 1000).toISOString(), valid_to: new Date(now + 2000).toISOString() }, now), false);
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1', '-keyout', join(work, 'key'), '-out', join(work, 'cert')], { stdio: 'ignore' });
   const key = readFileSync(join(work, 'key')); const cert = readFileSync(join(work, 'cert'));
   const pin = new X509Certificate(cert).fingerprint256;

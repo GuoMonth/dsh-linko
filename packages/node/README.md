@@ -55,6 +55,8 @@ LINKO_TLS_KEY=.linko/node-a.key LINKO_TLS_CERT=.linko/node-a.crt \
 LINKO_PORT=8787 LINKO_PEER_PORT=8788 pnpm node:start
 ```
 
+The sample certificate is self-signed and its key is generated with the OS cryptographic random source; it is never derived from a node ID or address. Linko pins the configured SHA-256 fingerprint and checks `notBefore`/`notAfter` before sending a request body. An expired or not-yet-valid certificate is unavailable and is retried, never reported as delivered. For this MVP, renewal means generating a new key and certificate, comparing the new fingerprint out of band, updating `certSha256` on both sides, and restarting or explicitly re-pairing. Do not silently accept a changed fingerprint. A local or organizational CA can be introduced later for larger trusted LANs and automatic leaf rotation.
+
 `GET /v1/peers` returns only `peerId` and `label`. `POST /v1/send` accepts `{peerId,envelope,clientId,commandId}`. It writes the local copy and outbox transactionally, retries the same event ID up to eight times with bounded exponential backoff, and deduplicates a command after restart. An exhausted item is visible as `abandoned`; an explicit new command can requeue the same event. `GET /v1/outbox` exposes delivery status and attempt count. The receiver accepts only authenticated HTTPS peer ingress; its local admin API is never exposed on that listener.
 
 ## MVP contract

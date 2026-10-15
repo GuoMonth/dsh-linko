@@ -14,3 +14,4 @@ Decision records capture choices that affect the product boundary, protocol, or 
 - [0008 Minimal kernel and verification boundary](0008-minimal-kernel-and-verification.md)
 - [0009 Deterministic group membership reducer](0009-deterministic-group-membership-reducer.md)
 - [0010 WSS live sessions and durable recovery](0010-wss-live-session-and-recovery.md)
+- [0011 Paired certificate lifecycle](0011-paired-certificate-lifecycle.md)
