@@ -12,9 +12,8 @@ import { mergeEnvelopes } from '../dist/model.js';
 import { LiveHints } from '../dist/live.js';
 import { SyncQueue } from '../dist/sync.js';
 
-// Node 24 exposes the browser-compatible WebSocket globally.
 const NativeWebSocket = globalThis.WebSocket;
-if (typeof NativeWebSocket !== 'function') throw new Error('native WebSocket is unavailable; Node 24 is required');
+if (typeof NativeWebSocket !== 'function') throw new Error('this Node.js runtime does not provide a native WebSocket');
 
 const clock = {
   setTimeout: (callback, delay) => setTimeout(callback, delay),

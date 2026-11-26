@@ -14,7 +14,9 @@ Linko 处于早期的规格驱动阶段。设计评审本身就是贡献，不�
 
 ## TypeScript 与验证
 
-开发基线参照 [DeepSeek Harness v0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5)，采用类型感知的 Oxlint、使用独立 Node 进程的 Vitest，以及共享的严格 TypeScript 配置。Linko 使用 Node 24 或更新版本、pnpm 12 和 TypeScript 7。各包的配置分别按实际运行环境检查 Node ESM 和浏览器 DOM 类型。
+开发基线参照 [DeepSeek Harness v0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5)，采用类型感知的 Oxlint、使用独立 Node 进程的 Vitest，以及共享的严格 TypeScript 配置。各包的配置分别按实际运行环境检查 Node ESM 和浏览器 DOM 类型。
+
+使用 pnpm 12 和 TypeScript 7。Linko 要求 Node.js 24.x 中的 24.22.3 及以上版本，或 Node.js 26.13.1 及以上版本。pnpm 在安装时检查此范围。CI 在这两个最低版本上分别运行完整检查。
 
 - 运行 `pnpm install --frozen-lockfile` 安装依赖。提交 Pull Request 前运行 `pnpm lint`、`pnpm typecheck` 和 `pnpm test`。
 - 将 Vitest 用例放在 `packages/<package>/tests/` 下，命名为 `*.spec.ts`。测试公开行为，进程重启、构建产物入口和跨包集成继续由相应的冒烟测试覆盖。

@@ -4,7 +4,9 @@
 
 ## 决策
 
-TypeScript 7 是第一种实现语言和行为参考。仓库工具链目标为 pnpm 12 与 Node 24 或更新版本。Rust/WebAssembly 只用于适合共享实现的确定性跨运行时代码：事件校验、签名校验、摘要比较、路由策略和脱敏。
+TypeScript 7 是第一种实现语言和行为参考。仓库使用 pnpm 12，Node.js 版本要求为 `^24.22.3 || >=26.13.1`，与 [DSH v0.2.3-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2) 引入的 Node.js 要求一致。
+
+Rust/WebAssembly 只用于适合共享实现的确定性跨运行时代码，包括事件校验、签名校验、摘要比较、路由策略和脱敏。
 
 WebSocket 生命周期、文件系统访问、DSH 生命周期和平台集成仍由宿主负责。只有 TypeScript fixture 稳定且存在明确边界决策后，才引入 WASM。
 
