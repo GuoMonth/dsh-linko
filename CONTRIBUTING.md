@@ -14,7 +14,9 @@ Linko is early and specification-driven. Design review is a contribution, not a 
 
 ## TypeScript and verification
 
-The development baseline follows [DeepSeek Harness v0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5). It uses type-aware Oxlint, Vitest with forked Node workers, and a strict shared TypeScript configuration. Linko uses Node 24 or newer, pnpm 12, and TypeScript 7. Package configs check Node ESM and browser DOM types against their respective runtimes.
+The development baseline follows [DeepSeek Harness v0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5). It uses type-aware Oxlint, Vitest with forked Node workers, and a strict shared TypeScript configuration. Package configs check Node ESM and browser DOM types against their respective runtimes.
+
+Use pnpm 12 and TypeScript 7. Linko requires Node.js 24.22.3 or later within the 24.x series, or Node.js 26.13.1 or later. pnpm checks this range during installation. CI runs the full suite on both minimum versions.
 
 - Install with `pnpm install --frozen-lockfile`. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before opening a pull request.
 - Place Vitest specs under `packages/<package>/tests/` as `*.spec.ts`. Test public behavior and keep process restarts, compiled entry points, and package integration covered by their smoke checks.

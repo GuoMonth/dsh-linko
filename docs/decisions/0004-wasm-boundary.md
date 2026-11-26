@@ -4,7 +4,9 @@ Status: accepted for the design phase.
 
 ## Decision
 
-TypeScript 7 is the first implementation language and behavioral reference. pnpm 12 and Node 24 or newer are the repository toolchain target. Rust/WebAssembly is reserved for deterministic, cross-runtime work that benefits from a shared implementation: event validation, signature checks, digest comparison, routing policy, and redaction.
+TypeScript 7 is the first implementation language and behavioral reference. The repository uses pnpm 12 and requires Node.js `^24.22.3 || >=26.13.1`, following the Node.js requirement introduced in [DSH v0.2.3-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2).
+
+Rust/WebAssembly is reserved for deterministic work that benefits from a shared implementation across runtimes, including event validation, signature checks, digest comparison, routing policy, and redaction.
 
 WebSocket lifecycle, filesystem access, DSH lifecycle, and platform integration remain host responsibilities. WASM is introduced only after TypeScript fixtures and an explicit boundary decision exist.
 
