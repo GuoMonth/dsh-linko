@@ -550,16 +550,15 @@ export function settleDecision(
   error: string | null,
 ): DecisionLedger {
   const records = ledger[envelopeId];
-  if (records === undefined || records.length === 0) return ledger;
-  const last = records[records.length - 1]!;
+  if (records === undefined) return ledger;
+  const last = records.at(-1);
+  if (last === undefined) return ledger;
   const settled: DecisionRecord = { ...last, status, error };
   return { ...ledger, [envelopeId]: [...records.slice(0, -1), settled] };
 }
 
 export function currentDecision(ledger: DecisionLedger, envelopeId: string): DecisionRecord | null {
-  const records = ledger[envelopeId];
-  if (records === undefined || records.length === 0) return null;
-  return records[records.length - 1]!;
+  return ledger[envelopeId]?.at(-1) ?? null;
 }
 
 export function isPending(ledger: DecisionLedger, envelopeId: string): boolean {

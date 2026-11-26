@@ -10,7 +10,9 @@
   },
   "scripts": {
     "docs:check": "node scripts/docs-check.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm --recursive typecheck",
+    "lint": "oxlint .",
+    "test": "vitest run",
     "node:build": "tsc -p packages/node/tsconfig.json",
     "node:start": "pnpm node:build && node packages/node/dist/cli.js",
     "node:smoke": "pnpm node:build && node packages/node/smoke.mjs",
@@ -27,14 +29,17 @@
     "web:smoke": "pnpm --filter @dsh-linko/web smoke",
     "web:live-smoke": "pnpm --filter @dsh-linko/web live:smoke",
     "web:live-integration": "pnpm node:build && pnpm web:build && pnpm --filter @dsh-linko/web live:integration",
-    "ledger:smoke": "pnpm node:build && node packages/node/ledger-smoke.mjs",
+    "ledger:smoke": "vitest run packages/node/tests/ledger.spec.ts",
     "group:build": "tsc -p packages/group/tsconfig.json",
     "group:typecheck": "tsc -p packages/group/tsconfig.json --noEmit",
-    "group:smoke": "pnpm group:build && node packages/group/smoke.mjs"
+    "group:smoke": "vitest run packages/group/tests/membership.spec.ts"
   },
   "devDependencies": {
     "@types/node": "24.8.0",
     "@types/ws": "8.18.2",
-    "typescript": "7.0.2"
+    "oxlint": "1.81.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   }
 }

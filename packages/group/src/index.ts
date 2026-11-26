@@ -180,11 +180,6 @@ export interface CreateGroupStateOptions {
   readonly limits?: Partial<RetentionLimits>;
 }
 
-type CanonicalOperation =
-  | { readonly kind: "add"; readonly principalId: string; readonly deviceId: string }
-  | { readonly kind: "remove"; readonly principalId: string; readonly deviceId?: string }
-  | { readonly kind: "replace"; readonly principalId: string; readonly oldDeviceId: string; readonly newDeviceId: string };
-
 const DEFAULT_VERIFICATION: CommitVerification = { status: "invalid", reason: "verifier-required" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -219,21 +214,6 @@ function copyIdentity(value: SignerIdentity): SignerIdentity {
   return { principalId: value.principalId, deviceId: value.deviceId };
 }
 
-function copyOperation(operation: CanonicalOperation): MembershipOperation {
-  if (operation.kind === "add") return { kind: "add", principalId: operation.principalId, deviceId: operation.deviceId };
-  if (operation.kind === "remove") {
-    return operation.deviceId === undefined
-      ? { kind: "remove", principalId: operation.principalId }
-      : { kind: "remove", principalId: operation.principalId, deviceId: operation.deviceId };
-  }
-  return {
-    kind: "replace",
-    principalId: operation.principalId,
-    oldDeviceId: operation.oldDeviceId,
-    newDeviceId: operation.newDeviceId,
-  };
-}
-
 function copyCommit(commit: SignedMembershipCommit): SignedMembershipCommit {
   return {
     groupId: commit.groupId,
@@ -241,12 +221,16 @@ function copyCommit(commit: SignedMembershipCommit): SignedMembershipCommit {
     parentHash: commit.parentHash,
     commitHash: commit.commitHash,
     signer: copyIdentity(commit.signer),
-    operations: commit.operations.map((operation) => copyOperation(normalizeOperation(operation)!)),
+    operations: commit.operations.map((operation) => {
+      const normalized = normalizeOperation(operation);
+      if (normalized === null) throw new TypeError("malformed membership operation");
+      return normalized;
+    }),
     signature: commit.signature,
   };
 }
 
-function normalizeOperation(value: unknown): CanonicalOperation | null {
+function normalizeOperation(value: unknown): MembershipOperation | null {
   if (!isRecord(value)) return null;
   const kind = value.kind ?? value.type;
   if (kind === "add" && validIdentifier(value.principalId) && validIdentifier(value.deviceId)) {
@@ -278,14 +262,14 @@ function normalizeCommit(value: unknown): SignedMembershipCommit | null {
   if (!isRecord(value.signer) || !validIdentifier(value.signer.principalId) || !validIdentifier(value.signer.deviceId)) return null;
   if (!Array.isArray(value.operations)) return null;
   const operations = value.operations.map(normalizeOperation);
-  if (operations.some((operation): operation is null => operation === null)) return null;
+  if (!operations.every((operation) => operation !== null)) return null;
   return {
     groupId: value.groupId,
     sequence,
     parentHash: value.parentHash,
     commitHash: value.commitHash,
     signer: { principalId: value.signer.principalId, deviceId: value.signer.deviceId },
-    operations: operations.map((operation) => copyOperation(operation!)),
+    operations,
     signature: value.signature,
   };
 }
@@ -532,16 +516,6 @@ function verifierResult(options: GroupReducerOptions, commit: SignedMembershipCo
   }
 }
 
-function rebuildMembers(state: GroupState, accepted: readonly AcceptedMembershipCommit[]): GroupMember[] {
-  let members = sortMembers(state.initialMembers);
-  for (const record of sortAccepted(accepted)) {
-    const transition = transitionMembers({ ...state, members }, record.commit.operations);
-    if (transition.reason !== undefined) throw new Error("accepted history cannot be rebuilt");
-    members = transition.members;
-  }
-  return members;
-}
-
 /**
  * Preserve the accepted head, quarantine the unaccepted branch, and expose an
  * explicit block. A conflict must never silently rewrite an already accepted
@@ -676,12 +650,17 @@ function coreApply(stateInput: GroupState, input: SignedMembershipCommit, option
     return conflictResult(withoutPending, commit, commit.sequence, parentConflict ? "conflicting-parent" : "conflicting-sequence", withoutPending.headHash ?? undefined);
   }
   if (commit.sequence > 1 && commit.parentHash === null) return makeResult("rejected", commitHash, withoutPending, "broken-parent-chain", []);
-  if (commit.parentHash !== expectedParent) {
-    const knownParent = commit.parentHash === null ? undefined : acceptedWithHash(withoutPending, commit.parentHash);
-    const quarantinedParent = commit.parentHash === null ? undefined : quarantineWithHash(withoutPending, commit.parentHash);
-    if (quarantinedParent !== undefined) return quarantineResult(withoutPending, commitHash, withQuarantine(withoutPending, [{ commit, reason: "descendant-of-quarantine", conflictingHash: commit.parentHash! }]), "descendant-of-quarantine", commit.parentHash!);
+  const parentHash = commit.parentHash;
+  if (parentHash !== expectedParent) {
+    if (parentHash === null) return pendingResult(withoutPending, commit, "missing-parent");
+    const quarantinedParent = quarantineWithHash(withoutPending, parentHash);
+    if (quarantinedParent !== undefined) {
+      const quarantined = withQuarantine(withoutPending, [{ commit, reason: "descendant-of-quarantine", conflictingHash: parentHash }]);
+      return quarantineResult(withoutPending, commitHash, quarantined, "descendant-of-quarantine", parentHash);
+    }
+    const knownParent = acceptedWithHash(withoutPending, parentHash);
     if (knownParent !== undefined) {
-      return conflictResult(withoutPending, commit, knownParent.commit.sequence + 1, "conflicting-parent", commit.parentHash!);
+      return conflictResult(withoutPending, commit, knownParent.commit.sequence + 1, "conflicting-parent", parentHash);
     }
     return pendingResult(withoutPending, commit, "missing-parent");
   }

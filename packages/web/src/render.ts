@@ -26,7 +26,6 @@ import {
   type ActionState,
   type ComposeDraft,
   type DecisionRecord,
-  type DeviceFacts,
   type Envelope,
   type FactDimension,
   type Intent,
@@ -50,7 +49,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
     if (value === null || value === undefined || value === false) continue;
     if (key === 'class') node.className = String(value);
     else if (key === 'text') node.textContent = String(value);
-    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
+    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
     else if (value === true) node.setAttribute(key, '');
     else node.setAttribute(key, String(value));
   }
@@ -59,14 +58,6 @@ export function h<K extends keyof HTMLElementTagNameMap>(
     node.append(typeof child === 'string' ? document.createTextNode(child) : child);
   }
   return node;
-}
-
-/** Like `h`, but for appending to an existing node; skips absent children. */
-function append(node: Element, ...children: Child[]): void {
-  for (const child of children) {
-    if (child === null || child === undefined) continue;
-    node.append(typeof child === 'string' ? document.createTextNode(child) : child);
-  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -131,12 +122,6 @@ const ACTION_COPY: Readonly<Record<ActionState, string>> = {
   uncertain: '结果未知',
   rejected: '已拒绝',
   expired: '已过期',
-};
-
-const PRESENTATION_COPY: Readonly<Record<string, string>> = {
-  unseen: '未呈现',
-  presented: '已呈现',
-  read: '已读',
 };
 
 const INTENT_COPY: Readonly<Record<Intent, string>> = {
@@ -471,7 +456,7 @@ function decisionPanel(model: DetailModel, handlers: DetailHandlers): HTMLElemen
 }
 
 export function detailView(model: DetailModel, handlers: DetailHandlers): HTMLElement {
-  const { envelope, decision, dismissed, parentTitle, now } = model;
+  const { envelope, dismissed, parentTitle, now } = model;
   const authorship = authorshipView(envelope.actor.kind);
   const presentation = presentationSummary(envelope.facts.devices);
   const action = deriveActionState(envelope, now);
@@ -569,6 +554,7 @@ export function detailView(model: DetailModel, handlers: DetailHandlers): HTMLEl
           handlers.onLoadBody === undefined ? null : h('button', { class: 'btn btn--small', type: 'button', text: model.bodyError ? '重试正文' : '展开正文', onclick: model.bodyError ? handlers.onRetryBody : handlers.onLoadBody }),
         );
 
+  const [parentId] = envelope.parents;
   const content = h(
     'section',
     { class: 'section' },
@@ -576,9 +562,9 @@ export function detailView(model: DetailModel, handlers: DetailHandlers): HTMLEl
     envelope.inlineBody !== null
       ? h('div', { class: 'rows' }, h('div', { class: 'row' }, h('div', { class: 'row__label', text: '正文' }), h('div', { class: 'row__value row__value--quote', text: envelope.inlineBody })))
       : remoteBody ?? h('p', { class: 'row__value--quote', text: '没有正文对象。此处单独显示封面。' }),
-    envelope.parents.length === 0
+    parentId === undefined
       ? null
-      : inertReference('父事件 · parent', envelope.parents[0]!, '仅作为引用显示，不抓取、不执行'),
+      : inertReference('父事件 · parent', parentId, '仅作为引用显示，不抓取、不执行'),
     envelope.bodyObjectId === null
       ? null
       : inertReference('正文对象 · body', envelope.bodyObjectId, '仅在请求时抓取，并按哈希校验'),
@@ -690,7 +676,7 @@ function peerSelect(model: ComposeModel, handlers: ComposeHandlers): HTMLElement
       const value = (event.target as HTMLSelectElement).value;
       handlers.onField({ peerId: value });
     },
-  }) as HTMLSelectElement;
+  });
 
   if (!model.peersAvailable) {
     select.append(h('option', { value: '', text: '对端目录不可用 / peer directory unavailable' }));
@@ -704,7 +690,7 @@ function peerSelect(model: ComposeModel, handlers: ComposeHandlers): HTMLElement
   }
   select.append(h('option', { value: '', text: '选择对端…' }));
   for (const peer of model.peers) {
-    const option = h('option', { value: peer.peerId, text: `${peer.label} · ${peer.peerId}` }) as HTMLOptionElement;
+    const option = h('option', { value: peer.peerId, text: `${peer.label} · ${peer.peerId}` });
     if (peer.peerId === model.draft.peerId) option.selected = true;
     select.append(option);
   }
@@ -741,16 +727,16 @@ export function composeView(model: ComposeModel, handlers: ComposeHandlers): HTM
     maxlength: '4000',
     placeholder: '正文以纯文本呈现，不会被解释为标记。',
     oninput: (event: Event) => handlers.onField({ body: (event.target as HTMLTextAreaElement).value }),
-  }) as HTMLTextAreaElement;
+  });
   bodyInput.value = draft.body;
 
   const intentSelect = h('select', {
     class: 'input',
     id: 'compose-intent',
     onchange: (event: Event) => handlers.onField({ intent: (event.target as HTMLSelectElement).value as Intent }),
-  }) as HTMLSelectElement;
+  });
   for (const intent of ['inform', 'suggest', 'request', 'delegate', 'command'] as const) {
-    const option = h('option', { value: intent, text: `${INTENT_COPY[intent]} · ${intent}` }) as HTMLOptionElement;
+    const option = h('option', { value: intent, text: `${INTENT_COPY[intent]} · ${intent}` });
     if (intent === draft.intent) option.selected = true;
     intentSelect.append(option);
   }
@@ -759,9 +745,9 @@ export function composeView(model: ComposeModel, handlers: ComposeHandlers): HTM
     class: 'input',
     id: 'compose-risk',
     onchange: (event: Event) => handlers.onField({ risk: (event.target as HTMLSelectElement).value as Risk }),
-  }) as HTMLSelectElement;
+  });
   for (const risk of ['low', 'medium', 'high'] as const) {
-    const option = h('option', { value: risk, text: `${RISK_COPY[risk]} · ${risk}` }) as HTMLOptionElement;
+    const option = h('option', { value: risk, text: `${RISK_COPY[risk]} · ${risk}` });
     if (risk === draft.risk) option.selected = true;
     riskSelect.append(option);
   }
@@ -770,7 +756,7 @@ export function composeView(model: ComposeModel, handlers: ComposeHandlers): HTM
     type: 'checkbox',
     id: 'compose-approval',
     onchange: (event: Event) => handlers.onField({ requiresApproval: (event.target as HTMLInputElement).checked }),
-  }) as HTMLInputElement;
+  });
   approvalInput.checked = draft.requiresApproval;
 
   const sendable = draft.peerId.trim() !== '' && draft.title.trim() !== '' && !model.sending;

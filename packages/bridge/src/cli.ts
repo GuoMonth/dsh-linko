@@ -17,7 +17,12 @@ function usage(): string {
 async function readStdin(): Promise<string> {
   if (stdin.isTTY) return "";
   const chunks: Buffer[] = [];
-  for await (const chunk of stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  for await (const chunk of stdin) {
+    const input: unknown = chunk;
+    if (Buffer.isBuffer(input)) chunks.push(input);
+    else if (typeof input === "string") chunks.push(Buffer.from(input));
+    else throw new TypeError("stdin must contain bytes or text");
+  }
   return Buffer.concat(chunks).toString("utf8").trim();
 }
 
@@ -37,18 +42,18 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) { console.log(usage()); return; }
   const command = args.shift();
-  if (!COMMANDS.includes(command as BridgeToolName)) throw new Error(usage());
-  const selected = command as BridgeToolName;
+  const selected = COMMANDS.find((name) => name === command);
+  if (selected === undefined) throw new Error(usage());
   let baseUrl = process.env.LINKO_LOCAL_URL ?? "http://127.0.0.1:8787";
   const remaining: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
+  const argumentsIterator = args.values();
+  for (const arg of argumentsIterator) {
     if (arg === "--base-url") {
-      const value = args[++index];
+      const value = argumentsIterator.next().value;
       if (value === undefined) throw new Error("--base-url requires a URL");
       baseUrl = value;
     } else if (arg === "--json") {
-      const value = args[++index];
+      const value = argumentsIterator.next().value;
       if (value === undefined) throw new Error("--json requires a JSON value");
       remaining.push(value);
     } else remaining.push(arg);

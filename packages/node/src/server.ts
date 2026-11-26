@@ -43,8 +43,16 @@ function wireEvent(item: ReturnType<NodeStore["sync"]>["events"][number], store?
   };
 }
 async function readBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = []; let size = 0;
-  for await (const chunk of req) { const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); size += buffer.length; if (size > MAX_BODY_BYTES) throw new StoreError("PAYLOAD_TOO_LARGE", `request exceeds ${MAX_BODY_BYTES} bytes`, 413); chunks.push(buffer); }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const input: unknown = chunk;
+    if (!Buffer.isBuffer(input) && typeof input !== "string") throw new StoreError("INVALID_INPUT", "request body must contain bytes or text");
+    const buffer = typeof input === "string" ? Buffer.from(input) : input;
+    size += buffer.length;
+    if (size > MAX_BODY_BYTES) throw new StoreError("PAYLOAD_TOO_LARGE", `request exceeds ${MAX_BODY_BYTES} bytes`, 413);
+    chunks.push(buffer);
+  }
   if (size === 0) throw new StoreError("INVALID_INPUT", "request body is required");
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new StoreError("INVALID_JSON", "request body must be valid JSON"); }
 }
@@ -58,8 +66,8 @@ function localHostAllowed(value: string | undefined): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 function mutationContentType(req: IncomingMessage): void {
-  const contentType = String(req.headers["content-type"] ?? "").split(";", 1)[0].trim().toLowerCase();
-  if (contentType !== "application/json") throw new StoreError("INVALID_CONTENT_TYPE", "mutations require application/json", 415);
+  const [mediaType = ""] = String(req.headers["content-type"] ?? "").split(";", 1);
+  if (mediaType.trim().toLowerCase() !== "application/json") throw new StoreError("INVALID_CONTENT_TYPE", "mutations require application/json", 415);
 }
 
 async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore, allowedOrigins: readonly string[], peerOnly: boolean, liveHub?: LiveHub): Promise<void> {
@@ -94,7 +102,8 @@ async function route(req: IncomingMessage, res: ServerResponse, store: NodeStore
     if (liveHub) {
       const capabilities = info.capabilities && typeof info.capabilities === "object" ? info.capabilities as Record<string, unknown> : {};
       info.capabilities = { ...capabilities, websocketHints: true };
-      info.notes = [...(Array.isArray(info.notes) ? info.notes : []), "WebSocket is an advisory live channel; REST cursor sync remains canonical recovery."];
+      const notes: unknown[] = Array.isArray(info.notes) ? info.notes : [];
+      info.notes = [...notes, "WebSocket is an advisory live channel; REST cursor sync remains canonical recovery."];
     }
     json(res, 200, info, origin, allowedOrigins); return;
   }
@@ -140,8 +149,8 @@ async function deliver(pending: PendingOutbox, store: NodeStore): Promise<void> 
       // validate the self-signed certificates used by the local profile, so
       // the request body is held until the pin check below succeeds.
       rejectUnauthorized: false, timeout: 4000 }, (res) => {
-      const chunks: Buffer[] = []; let size = 0;
-      res.on("data", (chunk) => { const b = Buffer.from(chunk); size += b.length; if (size <= MAX_BODY_BYTES) chunks.push(b); });
+      let size = 0;
+      res.on("data", (chunk: Buffer) => { size += chunk.length; });
       res.on("end", () => { if (size > MAX_BODY_BYTES) { reject(new Error("peer response too large")); return; } if ((res.statusCode ?? 500) < 200 || (res.statusCode ?? 500) >= 300) { reject(new Error(`peer returned ${res.statusCode ?? 500}`)); return; } resolve(); });
     });
     req.on("socket", (socket) => socket.once("secureConnect", () => {

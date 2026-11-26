@@ -129,9 +129,9 @@ export class LinkoLocalClient {
   }
 
   async createEnvelope(envelope: Record<string, unknown>, options: {
-    readonly targetPeerId?: string;
-    readonly clientId?: string;
-    readonly commandId?: string;
+    readonly targetPeerId?: string | undefined;
+    readonly clientId?: string | undefined;
+    readonly commandId?: string | undefined;
   } = {}): Promise<BridgeResult> {
     const target = options.targetPeerId;
     const path = target === undefined ? "/v1/envelopes" : "/v1/send";

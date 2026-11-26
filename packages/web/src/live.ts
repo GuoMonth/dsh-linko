@@ -74,9 +74,9 @@ export class LiveHints {
   }
 
   private connect(): void {
-    if (!this.enabled() || this.socket !== null || this.retryTimer !== undefined) return;
+    if (this.createSocket === null || !this.enabled() || this.socket !== null || this.retryTimer !== undefined) return;
     let socket: Socket;
-    try { socket = this.createSocket!(liveUrl(this.options.base)); }
+    try { socket = this.createSocket(liveUrl(this.options.base)); }
     catch { this.retry(); return; }
     this.socket = socket;
     this.handshakeTimer = this.clock.setTimeout(() => this.lost(socket), LIVE_LIMITS.handshakeMs);
