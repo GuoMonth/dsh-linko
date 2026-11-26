@@ -13,7 +13,7 @@ const MAX_OUTBOX_ATTEMPTS = 8;
 export class StoreError extends Error {
   readonly code: string;
   readonly status: number;
-  readonly details?: Record<string, unknown>;
+  readonly details?: Record<string, unknown> | undefined;
   constructor(code: string, message: string, status = 400, details?: Record<string, unknown>) {
     super(message);
     this.name = "StoreError";
@@ -50,7 +50,6 @@ function canonicalizeAt(value: unknown, depth: number): string {
 }
 function deriveEventId(value: Record<string, unknown>): string { return `sha256:${createHash("sha256").update(canonicalize(value)).digest("hex")}`; }
 function now(): string { return new Date().toISOString(); }
-function isActionState(value: string): value is ActionState { return ["requested", "awaiting_approval", "approved", "executing", "succeeded", "failed", "uncertain", "rejected", "expired"].includes(value); }
 function asEnvelope(value: unknown, ensureIdentity = false): Envelope {
   const input = jsonObject(value);
   const copy: Record<string, unknown> = { ...input };
@@ -118,7 +117,12 @@ function sendPayloadHash(value: unknown): string {
   return createHash("sha256").update(canonicalize(normalized)).digest("hex");
 }
 
-export interface NodeStoreOptions { dbPath?: string; nodeId?: string; peers?: readonly PeerConfig[]; clock?: () => string; }
+export interface NodeStoreOptions {
+  dbPath?: string | undefined;
+  nodeId?: string | undefined;
+  peers?: readonly PeerConfig[] | undefined;
+  clock?: () => string;
+}
 export interface InsertResult { eventId: string; cursor: number; duplicate: boolean; attemptId: string; item: SyncItem; }
 export interface SyncResult { events: SyncItem[]; cursor: string; nextCursor: string; hasMore: boolean; logEpoch: string; }
 export interface SendResult { eventId: string; item: SyncItem; delivery: "queued" | "confirmed"; duplicate: boolean; }
@@ -340,7 +344,8 @@ export class NodeStore {
     // A projection is returned once per event per page, while the cursor still advances over every independent change.
     const items = new Map<string, SyncItem>();
     for (const row of pageRows) { const item = this.getItem(String(row.event_id)); item.cursor = Number(row.change_cursor); items.set(item.eventId, item); }
-    const end = pageRows.length > 0 ? Number(pageRows[pageRows.length - 1].change_cursor) : start; const nextCursor = encodeCursor(epoch, end);
+    const lastRow = pageRows.at(-1);
+    const nextCursor = encodeCursor(epoch, lastRow === undefined ? start : Number(lastRow.change_cursor));
     return { events: [...items.values()], cursor: nextCursor, nextCursor, hasMore, logEpoch: epoch };
   }
 
@@ -375,7 +380,7 @@ export class NodeStore {
             deviceId: existing.device_id === null || existing.device_id === undefined ? "" : String(existing.device_id),
           },
         } : null;
-        const decision = reduceActionDecision({ eventDigest: eventId, envelope: item.envelope, actionId, decision: state as "approved" | "rejected", deviceId, at: timestamp, previous });
+        const decision = reduceActionDecision({ eventDigest: eventId, envelope: item.envelope, actionId, decision: state, deviceId, at: timestamp, previous });
         if (!decision.ok) throw new StoreError(decision.code, decision.message, decision.code === "INVALID_INPUT" ? 400 : 409);
         if (!decision.duplicate) {
           this.db.prepare("INSERT INTO actions(event_id, action_id, status, updated_at, event_digest, audience, authority, policy_version, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id, action_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, event_digest = excluded.event_digest, audience = excluded.audience, authority = excluded.authority, policy_version = excluded.policy_version, device_id = excluded.device_id").run(eventId, actionId, state, timestamp, binding.eventDigest, binding.audience, binding.authority, binding.policyVersion, binding.deviceId);

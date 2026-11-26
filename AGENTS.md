@@ -9,6 +9,7 @@ Linko is a documentation-first, open-source collaboration mesh for DeepSeek Harn
 - Treat the public DeepSeek Harness repository as an architectural reference. Absorb its plugin-oriented composition and documentation habits without copying its source code.
 - Treat Rellopn/dsh-p2p-lan as a research reference only. The clean-room reference is commit 62e47e45ab7e2729c23d38f30d26e9ab6af0768f; do not copy its source, wire format, tests, names, or implementation structure.
 - The target toolchain is TypeScript 7, pnpm 12, Node 24 or newer, and Rust compiled to WebAssembly where the shared deterministic core benefits from it.
+- Apply the TypeScript and testing conventions in [CONTRIBUTING.md](CONTRIBUTING.md). Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` for TypeScript changes, plus the relevant integration smoke checks.
 - Keep the local-first privacy model explicit. LAN reachability is not trust. Signed events, scoped visibility, expiry, revocation, and human approval are part of the design.
 - Do not introduce a global reputation number. Claims must retain their author, evidence, context, confidence, lifetime, and audience.
 - Do not add network flooding by default. Discovery, query expansion, and anti-entropy synchronization are separate mechanisms with explicit budgets.

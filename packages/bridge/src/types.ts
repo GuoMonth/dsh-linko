@@ -34,27 +34,20 @@ export interface AskInput {
   readonly commandId?: string;
 }
 
-export interface ReplyInput {
-  readonly eventId: string;
-  readonly body: string;
-  readonly title?: string;
-  readonly preview?: string;
-  readonly agentId?: string;
-  readonly delegatedBy?: string;
-  readonly contextRefs?: readonly string[];
-  readonly targetPeerId?: string;
-  readonly clientId?: string;
-  readonly commandId?: string;
-}
-
 export interface DraftInput {
   readonly eventId: string;
   readonly body: string;
-  readonly title?: string;
-  readonly preview?: string;
-  readonly agentId?: string;
-  readonly delegatedBy?: string;
-  readonly contextRefs?: readonly string[];
+  readonly title?: string | undefined;
+  readonly preview?: string | undefined;
+  readonly agentId?: string | undefined;
+  readonly delegatedBy?: string | undefined;
+  readonly contextRefs?: readonly string[] | undefined;
+}
+
+export interface ReplyInput extends DraftInput {
+  readonly targetPeerId?: string;
+  readonly clientId?: string;
+  readonly commandId?: string;
 }
 
 export interface InboxInput {

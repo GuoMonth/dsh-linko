@@ -43,7 +43,7 @@ export class LiveHub {
     perMessageDeflate: false, autoPong: false,
   });
   private readonly heartbeat: NodeJS.Timeout;
-  private hintTimer?: NodeJS.Timeout;
+  private hintTimer: NodeJS.Timeout | undefined;
   private closed = false;
 
   constructor(private readonly options: LiveHubOptions) {

@@ -1,9 +1,11 @@
 import { LinkoLocalClient } from "./client.js";
 import type {
+  ApprovalResult,
   ApproveInput,
   AskInput,
   BridgeResult,
   BridgeToolDescriptor,
+  BridgeToolName,
   BridgeTools,
   DraftInput,
   DraftResult,
@@ -32,6 +34,8 @@ function inputObject(value: unknown, context: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function text(value: unknown, field: string): string;
+function text(value: unknown, field: string, required: false): string | undefined;
 function text(value: unknown, field: string, required = true): string | undefined {
   if (value === undefined && !required) return undefined;
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_TEXT) throw new TypeError(`${field} must be non-empty text of at most ${MAX_TEXT} characters`);
@@ -45,7 +49,7 @@ function strings(value: unknown, field: string): readonly string[] {
 }
 
 function eventId(value: unknown): string {
-  return text(value, "eventId") as string;
+  return text(value, "eventId");
 }
 
 function agentActor(agentId: string, delegatedBy: string | undefined): Record<string, unknown> {
@@ -65,8 +69,8 @@ function titleFrom(event: LinkoEvent): string {
 }
 
 function askEnvelope(input: AskInput): Record<string, unknown> {
-  const title = text(input.title, "title") as string;
-  const body = text(input.body, "body") as string;
+  const title = text(input.title, "title");
+  const body = text(input.body, "body");
   const agentId = text(input.agentId, "agentId", false) ?? DEFAULT_AGENT_ID;
   const delegatedBy = text(input.delegatedBy, "delegatedBy", false);
   const requiresApproval = input.requiresApproval ?? true;
@@ -89,7 +93,7 @@ function askEnvelope(input: AskInput): Record<string, unknown> {
 }
 
 function replyDraft(input: DraftInput, parent: LinkoEvent): LinkoDraft {
-  const body = text(input.body, "body") as string;
+  const body = text(input.body, "body");
   const agentId = text(input.agentId, "agentId", false) ?? DEFAULT_AGENT_ID;
   const delegatedBy = text(input.delegatedBy, "delegatedBy", false);
   const contextRefs = strings(input.contextRefs, "contextRefs");
@@ -144,7 +148,7 @@ export class DshCompanionBridge implements BridgeTools {
     return { draft: replyDraft({ ...value, eventId: id }, parent), parent };
   }
 
-  async approve(input: ApproveInput) {
+  async approve(input: ApproveInput): Promise<ApprovalResult> {
     const value = inputObject(input, "approve input") as unknown as ApproveInput;
     const id = eventId(value.eventId);
     return this.client.approve(id, text(value.actionId, "actionId", false), text(value.deviceId, "deviceId", false));
@@ -171,7 +175,7 @@ export class DshCompanionBridge implements BridgeTools {
 
   /** Register the six stable tool names into any compatible host. */
   register(host: DshBridgeHost): void {
-    const handlers: Record<string, (input: unknown) => Promise<unknown>> = {
+    const handlers: Record<BridgeToolName, (input: unknown) => Promise<unknown>> = {
       ask: (input) => this.ask(input as AskInput),
       inbox: (input) => this.inbox(input === undefined ? {} : input as InboxInput),
       inspect: (input) => this.inspect(typeof input === "string" ? input : eventId(inputObject(input, "inspect input").eventId)),

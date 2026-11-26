@@ -1,14 +1,10 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": false,
     "outDir": "dist",
     "rootDir": "src",
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "sourceMap": true,
-    "declaration": false
+    "types": []
   },
   "include": ["src/**/*.ts"]
 }

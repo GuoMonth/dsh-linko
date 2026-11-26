@@ -21,14 +21,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm docs:check
+      - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm group:typecheck
+      - run: pnpm test
       - run: pnpm smoke
-      - run: pnpm group:smoke
+      - run: pnpm group:build
       - run: pnpm node:outbox-smoke
       - run: pnpm node:live-smoke
       - run: pnpm node:recovery-smoke
-      - run: pnpm ledger:smoke
       - run: pnpm bridge:contract:smoke
       - run: pnpm web:smoke
       - run: pnpm web:live-smoke
